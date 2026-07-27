@@ -1,0 +1,18 @@
+# Signing keys must never be committed. owfeed writes them 0600 and adds this
+# entry to the user's repo too — the same rule applies to our own.
+*.pem
+*.key
+
+# Build output
+/owfeed
+/dist/
+/out/
+/stage/
+
+# Go
+*.test
+*.out
+/vendor/
+
+# Local scratch
+.DS_Store
