@@ -1,0 +1,342 @@
+// Package config parses owfeed.yml.
+//
+// Unknown keys are an error, not a warning. A feed is defined by a file the user
+// rarely reads back, and the failure mode of tolerating typos is the worst kind:
+// `sign-packages` misspelled as `sign_packages` silently produces an unsigned feed
+// that works fine for the maintainer (who has the key) and fails for every subscriber.
+//
+// Fields that the schema defines but this version does not act on are also errors.
+// Silently ignoring a `retention:` block that the user wrote to bound their storage
+// is worse than refusing to run.
+package config
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"os"
+
+	"gopkg.in/yaml.v3"
+)
+
+// SchemaVersion is the only value accepted in the top-level `version` field.
+const SchemaVersion = 1
+
+// Config is a parsed owfeed.yml.
+type Config struct {
+	Version  int       `yaml:"version"`
+	Feed     Feed      `yaml:"feed"`
+	Layout   Layout    `yaml:"layout"`
+	Releases []Release `yaml:"releases"`
+	Signing  Signing   `yaml:"signing"`
+	Build    Build     `yaml:"build"`
+	Packages []Package `yaml:"packages"`
+	Publish  []Publish `yaml:"publish"`
+
+	// Declared so that writing them is a clear "not in this version" error rather
+	// than a silent no-op. See notImplemented.
+	// Typed as free-form maps rather than yaml.Node: strict decoding recurses, and a
+	// yaml.Node field would have every key inside these blocks checked against
+	// yaml.Node's own fields.
+	Overrides []map[string]any `yaml:"overrides"`
+	Retention map[string]any   `yaml:"retention"`
+
+	// keyringWasDefaulted records that signing.keyring-package came from the default
+	// rather than from the user, so that "not implemented" is reported only to someone
+	// who actually asked for it.
+	keyringWasDefaulted bool
+}
+
+// Feed identifies the feed and where it will be served from.
+type Feed struct {
+	// Name seeds every derived filename: <name>.pem, <name>.list, <name>-keyring.
+	Name string `yaml:"name"`
+	// URL is the final, user-facing base URL. It must be the address apk will
+	// actually fetch: apk does not follow redirects with the stock uclient-fetch, so
+	// an apex that redirects to www, or http that upgrades to https, is a broken feed
+	// even though it works in a browser. `owfeed doctor` proves this against the live
+	// URL; here we only reject the shapes that are wrong on their face.
+	URL         string `yaml:"url"`
+	Title       string `yaml:"title"`
+	Maintainer  string `yaml:"maintainer"`
+	License     string `yaml:"license"`
+	Homepage    string `yaml:"homepage"`
+	Description string `yaml:"description"`
+}
+
+// Layout controls the directory shape under Feed.URL.
+type Layout struct {
+	// Path is templated with {release} and {arch}. The default matches what the
+	// ecosystem already publishes, so install snippets look native.
+	Path string `yaml:"path"`
+}
+
+const DefaultLayoutPath = "releases/{release}/{arch}"
+
+// Release is one OpenWrt release line.
+type Release struct {
+	// Line is a major.minor line such as "25.12", or "snapshot".
+	Line string `yaml:"line"`
+	// Default marks the line advertised in the install snippet.
+	Default bool `yaml:"default"`
+	// Arches is "auto" (derived from downloads.openwrt.org and pinned in owfeed.lock)
+	// or an explicit list. Explicit lists are how every existing feed ends up with a
+	// hand-maintained 36-entry matrix, so "auto" is the default.
+	Arches Arches `yaml:"arches"`
+	// Prerelease builds and publishes the line without advertising it.
+	Prerelease bool `yaml:"prerelease"`
+	// Format is "apk" or "ipk". Only apk is implemented; the field exists so that
+	// adding 24.10 later is additive rather than a schema change.
+	Format string `yaml:"format"`
+}
+
+// Arches is either the literal "auto" or an explicit list of architectures.
+type Arches struct {
+	Auto bool
+	List []string
+}
+
+func (a *Arches) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind == yaml.ScalarNode {
+		if node.Value != "auto" {
+			return fmt.Errorf("arches: %q is not valid; use \"auto\" or a list", node.Value)
+		}
+		a.Auto = true
+		return nil
+	}
+	if node.Kind != yaml.SequenceNode {
+		return errors.New("arches: want \"auto\" or a list of architectures")
+	}
+	return node.Decode(&a.List)
+}
+
+// Signing controls how the feed is signed.
+type Signing struct {
+	// Key is "env:VAR" or "file:PATH".
+	Key string `yaml:"key"`
+	// SignPackages also signs each .apk, not just the index.
+	//
+	// OpenWrt 25.12 never signs individual packages, so `apk add ./file.apk` always
+	// needs --allow-untrusted there, and LuCI's Upload Package flow — which cannot
+	// pass that flag, since package-manager-call drops unrecognised arguments — is
+	// simply broken for third-party packages. Signing each package costs nothing and
+	// fixes both, so it is on by default.
+	SignPackages *bool `yaml:"sign-packages"`
+	// KeyringPackage ships a <name>-keyring package carrying the feed's public key,
+	// which is the only way a rotated key reaches already-installed routers.
+	KeyringPackage *bool `yaml:"keyring-package"`
+}
+
+// Build controls package construction.
+type Build struct {
+	SDK         SDK  `yaml:"sdk"`
+	ChangedOnly bool `yaml:"changed-only"`
+}
+
+// SDK pins the toolchain.
+type SDK struct {
+	// Release is a concrete point release such as "25.12.5", or "latest-point".
+	// Never SNAPSHOT: those tarballs are rotated on the mirrors, so a checksum can
+	// legitimately fail to match the bytes that arrive moments later.
+	Release string `yaml:"release"`
+}
+
+const LatestPoint = "latest-point"
+
+// BuildMode selects how a package is produced.
+type BuildMode string
+
+const (
+	// BuildMkpkg stages a rootfs and calls apk mkpkg. No SDK build, no cross
+	// toolchain, seconds rather than tens of minutes — correct for anything
+	// architecture-independent, which is most of what third parties ship.
+	BuildMkpkg BuildMode = "mkpkg"
+	// BuildSDK compiles through the OpenWrt SDK.
+	BuildSDK BuildMode = "sdk"
+)
+
+// Package is one package to build.
+type Package struct {
+	// Path points at a directory containing an OpenWrt Makefile (SDK build).
+	Path string `yaml:"path"`
+
+	// Name, with Build: mkpkg, names a package built from a staged rootfs.
+	Name  string    `yaml:"name"`
+	Build BuildMode `yaml:"build"`
+
+	// Arch is "noarch" for architecture-independent packages. It is never "all":
+	// apk rejects "all" as uninstallable, which is why OpenWrt's own package-pack.mk
+	// translates LUCI_PKGARCH:=all into arch:noarch.
+	Arch string `yaml:"arch"`
+
+	// Version is a literal version, mutually exclusive with VersionFrom.
+	Version string `yaml:"version"`
+	// VersionFrom reads the version from somewhere: "makefile:PATH", "file:PATH",
+	// or "git-describe".
+	VersionFrom string `yaml:"version-from"`
+
+	// Files is the staged rootfs handed to `apk mkpkg --files`.
+	Files string `yaml:"files"`
+
+	Description string   `yaml:"description"`
+	License     string   `yaml:"license"`
+	URL         string   `yaml:"url"`
+	Maintainer  string   `yaml:"maintainer"`
+	Depends     []string `yaml:"depends"`
+	Provides    []string `yaml:"provides"`
+	Replaces    []string `yaml:"replaces"`
+	Recommends  []string `yaml:"recommends"`
+
+	// Conffiles become /lib/apk/packages/<name>.conffiles and .conffiles_static.
+	// sysupgrade reads the latter to decide which config files to carry across an
+	// upgrade, so omitting it silently loses the user's configuration.
+	Conffiles []string `yaml:"conffiles"`
+
+	// Scripts maps an apk script type (post-install, pre-deinstall, ...) to a file.
+	Scripts map[string]string `yaml:"scripts"`
+
+	// ABIVersion is appended to the package name and mirrored into
+	// tags:openwrt:abiversion, which ImageBuilder needs to resolve the dependency.
+	ABIVersion string `yaml:"abiversion"`
+}
+
+// Publish is one destination.
+type Publish struct {
+	Target string `yaml:"target"`
+
+	// s3 / rsync fields, declared for schema completeness.
+	Bucket       string            `yaml:"bucket"`
+	Endpoint     string            `yaml:"endpoint"`
+	Region       string            `yaml:"region"`
+	Prefix       string            `yaml:"prefix"`
+	Credentials  string            `yaml:"credentials"`
+	CacheControl map[string]string `yaml:"cache-control"`
+	Dest         string            `yaml:"dest"`
+}
+
+// Publish target names.
+const (
+	TargetGitHubPages = "github-pages"
+	TargetS3          = "s3"
+	TargetRsync       = "rsync"
+)
+
+// Error is a configuration problem. It maps to exit code 2.
+type Error struct {
+	Path string
+	Msg  string
+	Hint string
+}
+
+func (e *Error) Error() string {
+	s := e.Msg
+	if e.Path != "" {
+		s = e.Path + ": " + s
+	}
+	if e.Hint != "" {
+		s += "\n  " + e.Hint
+	}
+	return s
+}
+
+func errf(path, format string, args ...any) *Error {
+	return &Error{Path: path, Msg: fmt.Sprintf(format, args...)}
+}
+
+// Load reads and validates a config file.
+func Load(path string) (*Config, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return Parse(f, path)
+}
+
+// Parse reads a config from r. name is used in error messages.
+func Parse(r io.Reader, name string) (*Config, error) {
+	dec := yaml.NewDecoder(r)
+	// The whole point: a key we do not recognise stops the run.
+	dec.KnownFields(true)
+
+	var c Config
+	if err := dec.Decode(&c); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, errf(name, "file is empty")
+		}
+		return nil, &Error{
+			Path: name,
+			Msg:  err.Error(),
+			Hint: "owfeed rejects unknown keys rather than ignoring them; check for a typo or a field from a newer schema version",
+		}
+	}
+
+	if err := c.applyDefaults(); err != nil {
+		return nil, err
+	}
+	if err := c.validate(name); err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+func boolPtr(b bool) *bool { return &b }
+
+func (c *Config) applyDefaults() error {
+	if c.Layout.Path == "" {
+		c.Layout.Path = DefaultLayoutPath
+	}
+	if len(c.Releases) == 0 {
+		// A config that names no release line means "the current apk line".
+		c.Releases = []Release{{Line: DefaultReleaseLine, Default: true, Arches: Arches{Auto: true}}}
+	}
+	if c.Signing.SignPackages == nil {
+		c.Signing.SignPackages = boolPtr(true)
+	}
+	if c.Signing.KeyringPackage == nil {
+		c.Signing.KeyringPackage = boolPtr(true)
+		c.keyringWasDefaulted = true
+	}
+	if c.Signing.Key == "" {
+		c.Signing.Key = "env:" + DefaultKeyEnv
+	}
+	if c.Build.SDK.Release == "" {
+		c.Build.SDK.Release = LatestPoint
+	}
+
+	defaulted := false
+	for i := range c.Releases {
+		if c.Releases[i].Format == "" {
+			c.Releases[i].Format = "apk"
+		}
+		if !c.Releases[i].Auto() && len(c.Releases[i].Arches.List) == 0 {
+			c.Releases[i].Arches.Auto = true
+		}
+		if c.Releases[i].Default {
+			defaulted = true
+		}
+	}
+	if !defaulted && len(c.Releases) > 0 {
+		c.Releases[0].Default = true
+	}
+	return nil
+}
+
+// DefaultReleaseLine is the line assumed when the config names none.
+const DefaultReleaseLine = "25.12"
+
+// DefaultKeyEnv is the environment variable a signing key is read from by default.
+const DefaultKeyEnv = "OWFEED_SIGN_KEY"
+
+// Auto reports whether this release derives its architecture set.
+func (r Release) Auto() bool { return r.Arches.Auto }
+
+// DefaultRelease returns the line advertised to users.
+func (c *Config) DefaultRelease() Release {
+	for _, r := range c.Releases {
+		if r.Default {
+			return r
+		}
+	}
+	return c.Releases[0]
+}

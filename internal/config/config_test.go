@@ -1,0 +1,235 @@
+package config
+
+import (
+	"strings"
+	"testing"
+)
+
+// minimal is the config from the design's "8 lines" case, plus the one field a mkpkg
+// build cannot infer. Everything else must come from defaults.
+const minimal = `
+version: 1
+feed:
+  name: footstrap
+  url: https://feed.example.org
+publish:
+  - target: github-pages
+packages:
+  - name: luci-theme-footstrap
+    build: mkpkg
+    arch: noarch
+    version: 1.2.3-r1
+    files: ./dist/root
+`
+
+func parse(t *testing.T, src string) (*Config, error) {
+	t.Helper()
+	return Parse(strings.NewReader(src), "owfeed.yml")
+}
+
+func mustParse(t *testing.T, src string) *Config {
+	t.Helper()
+	c, err := parse(t, src)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	return c
+}
+
+func TestMinimalConfigDefaults(t *testing.T) {
+	c := mustParse(t, minimal)
+
+	if c.Layout.Path != DefaultLayoutPath {
+		t.Errorf("layout.path = %q, want %q", c.Layout.Path, DefaultLayoutPath)
+	}
+	if got := len(c.Releases); got != 1 {
+		t.Fatalf("releases = %d, want 1 defaulted line", got)
+	}
+	r := c.DefaultRelease()
+	if r.Line != DefaultReleaseLine {
+		t.Errorf("release line = %q, want %q", r.Line, DefaultReleaseLine)
+	}
+	if !r.Auto() {
+		t.Error("arches should default to auto; an explicit list is how feeds end up with a hand-maintained matrix")
+	}
+	if r.Format != "apk" {
+		t.Errorf("format = %q, want apk", r.Format)
+	}
+	if !r.Default {
+		t.Error("the only release line should be the default one")
+	}
+	// Signing each package is what makes `apk add ./file.apk` and LuCI's upload flow
+	// work at all on 25.12, so it must not require opting in.
+	if c.Signing.SignPackages == nil || !*c.Signing.SignPackages {
+		t.Error("signing.sign-packages should default to true")
+	}
+	if c.Signing.Key != "env:"+DefaultKeyEnv {
+		t.Errorf("signing.key = %q, want env:%s", c.Signing.Key, DefaultKeyEnv)
+	}
+	if c.Build.SDK.Release != LatestPoint {
+		t.Errorf("build.sdk.release = %q, want %q", c.Build.SDK.Release, LatestPoint)
+	}
+}
+
+// The single most important property of this package: a key we do not know stops the
+// run. A tolerated typo in sign-packages produces a feed that works for the maintainer
+// and fails for everyone else.
+func TestUnknownKeyIsAnError(t *testing.T) {
+	src := strings.Replace(minimal, "publish:", "signing:\n  sign_packages: true\npublish:", 1)
+	_, err := parse(t, src)
+	if err == nil {
+		t.Fatal("Parse accepted an unknown key")
+	}
+	if !strings.Contains(err.Error(), "sign_packages") {
+		t.Errorf("error does not name the offending key: %v", err)
+	}
+}
+
+func TestRejects(t *testing.T) {
+	tests := []struct {
+		name    string
+		src     string
+		wantSub string
+	}{
+		{
+			// The single most common apk metadata mistake: "all" is what OpenWrt
+			// Makefiles say, and apk rejects it as uninstallable.
+			name:    "arch all",
+			src:     strings.Replace(minimal, "arch: noarch", "arch: all", 1),
+			wantSub: "noarch",
+		},
+		{
+			name:    "missing version field",
+			src:     strings.Replace(minimal, "version: 1\n", "", 1),
+			wantSub: "version",
+		},
+		{
+			name:    "http feed url",
+			src:     strings.Replace(minimal, "https://feed.example.org", "http://feed.example.org", 1),
+			wantSub: "redirect",
+		},
+		{
+			// Every existing OpenWrt feed README recommends jsDelivr as the mirror for
+			// blocked regions. It caches the index and its packages independently.
+			name:    "jsdelivr",
+			src:     strings.Replace(minimal, "https://feed.example.org", "https://cdn.jsdelivr.net/gh/o/r", 1),
+			wantSub: "jsDelivr",
+		},
+		{
+			// Would publish openwrt-foo.pem and shadow OpenWrt's own key, since the
+			// first filename seen across the key directories wins.
+			name:    "openwrt-prefixed feed name",
+			src:     strings.Replace(minimal, "name: footstrap", "name: openwrt-foo", 1),
+			wantSub: "shadow",
+		},
+		{
+			name:    "point release as line",
+			src:     strings.Replace(minimal, "publish:", "releases:\n  - line: \"25.12.5\"\npublish:", 1),
+			wantSub: "build.sdk.release",
+		},
+		{
+			name:    "no packages",
+			src:     minimal[:strings.Index(minimal, "packages:")],
+			wantSub: "nothing to build",
+		},
+		{
+			name:    "both version and version-from",
+			src:     strings.Replace(minimal, "version: 1.2.3-r1", "version: 1.2.3-r1\n    version-from: git-describe", 1),
+			wantSub: "version-from",
+		},
+		{
+			name:    "no version at all",
+			src:     strings.Replace(minimal, "    version: 1.2.3-r1\n", "", 1),
+			wantSub: "version",
+		},
+		{
+			name:    "unknown script type",
+			src:     strings.Replace(minimal, "    files: ./dist/root", "    files: ./dist/root\n    scripts:\n      postinst: ./x.sh", 1),
+			wantSub: "post-install",
+		},
+		{
+			name:    "relative conffile",
+			src:     strings.Replace(minimal, "    files: ./dist/root", "    files: ./dist/root\n    conffiles: [\"etc/config/x\"]", 1),
+			wantSub: "absolute",
+		},
+		{
+			// An SDK build is a real thing to ask for and this version cannot do it.
+			// Saying so beats building nothing and reporting success.
+			name:    "sdk build not implemented",
+			src:     strings.Replace(minimal, "  - name: luci-theme-footstrap\n    build: mkpkg\n", "  - path: net/foo\n", 1),
+			wantSub: "not implemented",
+		},
+		{
+			name:    "retention silently ignored",
+			src:     minimal + "retention:\n  keep-versions: 2\n",
+			wantSub: "not implemented",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := parse(t, tc.src)
+			if err == nil {
+				t.Fatalf("Parse accepted %s", tc.name)
+			}
+			if !strings.Contains(err.Error(), tc.wantSub) {
+				t.Errorf("error %q does not mention %q", err, tc.wantSub)
+			}
+		})
+	}
+}
+
+// The default is on because that is where the design goes, but a user who explicitly
+// asked for a keyring package must be told it is not built rather than assume it was.
+func TestKeyringPackageOnlyErrorsWhenAskedFor(t *testing.T) {
+	if _, err := parse(t, minimal); err != nil {
+		t.Fatalf("default keyring-package should not error: %v", err)
+	}
+	src := strings.Replace(minimal, "publish:", "signing:\n  keyring-package: true\npublish:", 1)
+	if _, err := parse(t, src); err == nil {
+		t.Error("explicitly requesting keyring-package should report that it is not implemented")
+	}
+}
+
+// The dash appears only when the base name already ends in a digit — which is why the
+// ecosystem contains both libjson-c5 and libblobmsg-json20260213.
+func TestEffectiveNameABISuffix(t *testing.T) {
+	tests := []struct{ name, abi, want string }{
+		{"libjson-c", "5", "libjson-c5"},
+		{"libblobmsg-json", "20260213", "libblobmsg-json20260213"},
+		{"libfoo2", "3", "libfoo2-3"},
+		{"libfoo", "", "libfoo"},
+	}
+	for _, tc := range tests {
+		p := Package{Name: tc.name, ABIVersion: tc.abi}
+		if got := p.EffectiveName(); got != tc.want {
+			t.Errorf("EffectiveName(%q, abi %q) = %q, want %q", tc.name, tc.abi, got, tc.want)
+		}
+	}
+}
+
+func TestArchesAcceptsAutoOrList(t *testing.T) {
+	c := mustParse(t, strings.Replace(minimal, "publish:",
+		"releases:\n  - line: \"25.12\"\n    arches: [x86_64, aarch64_cortex-a53]\npublish:", 1))
+	got := c.Releases[0].Arches
+	if got.Auto || len(got.List) != 2 {
+		t.Fatalf("arches = %+v, want an explicit list of 2", got)
+	}
+
+	if _, err := parse(t, strings.Replace(minimal, "publish:",
+		"releases:\n  - line: \"25.12\"\n    arches: everything\npublish:", 1)); err == nil {
+		t.Error("Parse accepted a bogus arches scalar")
+	}
+}
+
+func TestDuplicatePackageName(t *testing.T) {
+	dup := minimal + `  - name: luci-theme-footstrap
+    build: mkpkg
+    arch: noarch
+    version: 2.0-r1
+    files: ./dist/root2
+`
+	if _, err := parse(t, dup); err == nil || !strings.Contains(err.Error(), "twice") {
+		t.Fatalf("Parse(duplicate) = %v, want a duplicate-name error", err)
+	}
+}
