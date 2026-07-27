@@ -1,0 +1,193 @@
+# Verified apk-tools behaviour
+
+Facts established by running the real thing, not by reading documentation. Every claim
+here has a reproduction below it. Anything not reproduced is not in this file.
+
+**Environment:** apk-tools 3.0.5 extracted from `openwrt-sdk-25.12.5-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst`,
+run under `linux/amd64`. Date: 2026-07-27.
+
+Throughout, `$APK` is the loader invocation from
+[Extracting a host apk](#extracting-a-host-apk-from-the-sdk):
+
+```sh
+APK="/opt/apk/lib/ld-linux-x86-64.so.2 --library-path /opt/apk/lib /opt/apk/bin/.apk.bin"
+```
+
+---
+
+## `mkndx` accepts repeated `--sign-key`
+
+**This unblocks key rotation.** An index can carry several signatures, so during a
+rotation window both the old and the new key can sign the same `packages.adb` and
+subscribers with either key installed keep working. No two-index dance, no URL flip.
+
+```sh
+$APK mkndx --allow-untrusted --sign-key a.pem --sign-key b.pem --output two.adb ./h.apk
+$APK adbdump two.adb | grep -c '^# sig'      # => 2
+```
+
+Dump excerpt:
+
+```
+# sig v00 h04 364b7138efaa7f7f862f62fd04099d96...: UNTRUSTED signature
+# sig v00 h04 a4e7527837b5ee992d0619a1c3c27aff...: UNTRUSTED signature
+```
+
+(`UNTRUSTED` here only means neither key is in this container's trust directory; it is
+the expected output when dumping a third-party index without installing its key.)
+
+## `adbsign` reports failure on stdout and still exits 0
+
+**Treat `adbsign`'s exit status as carrying no information.** It printed an error, did
+nothing, and returned success:
+
+```sh
+$APK mkndx --allow-untrusted --sign-key a.pem --output x.adb ./h.apk
+$APK adbsign --sign-key b.pem x.adb
+#   ERROR: x.adb: UNTRUSTED signature
+#   exit=0
+#   md5 before=1499aca8 after=1499aca8  -> UNCHANGED
+```
+
+A pipeline written as `adbsign … || die` ships a silently unsigned or half-signed index.
+Verify by re-reading the artifact and counting signature blocks, never by `$?`.
+
+The cause is that `adbsign` reads the existing index through the normal trust path, so
+signing an index whose own signatures are not trusted locally requires the flag:
+
+```sh
+$APK adbsign --allow-untrusted --sign-key b.pem y.adb
+#   exit=0
+#   md5 before=440c1a68 after=8c464210  -> CHANGED
+#   signature blocks: 2
+```
+
+## `mkndx` does fail loudly on an unusable key
+
+Unlike `adbsign`, this one is trustworthy — exit 99, and no output file is left behind:
+
+```sh
+echo garbage > bad.pem
+$APK mkndx --allow-untrusted --sign-key bad.pem --output z.adb ./h.apk
+#   ERROR: Failed to load signing key: bad.pem: cryptographic key format not recognized
+#   exit=99
+#   z.adb not created
+```
+
+## Index magic is `ADBd`
+
+Default compression is deflate, which is the only thing OpenWrt's on-device apk can
+read (it is built `-Dzstd=disabled`):
+
+```sh
+head -c 4 one.adb | od -c | head -1
+#   0000000   A   D   B   d
+```
+
+## `installed-size` and `file-size` are computed, not supplied
+
+They appear in the index without being passed to `--info` (and `--info` rejects them):
+
+```
+    installed-size: 3
+    file-size: 239
+```
+
+---
+
+## Extracting a host apk from the SDK
+
+The SDK ships `staging_dir/host/bin/apk` as a **bash** wrapper around a hidden real
+binary, running it under a bundled glibc loader:
+
+```sh
+$ cat staging_dir/host/bin/apk
+#!/usr/bin/env bash
+dir="$(dirname "$0")"
+export RUNAS_ARG0="$0"
+export LD_PRELOAD="${LD_PRELOAD:+$LD_PRELOAD:}$dir/../lib/runas.so"
+exec "$dir/../lib/ld-linux-x86-64.so.2" --library-path "$dir/../lib/" "$dir/.apk.bin" "$@"
+
+$ file staging_dir/host/bin/.apk.bin
+ELF 64-bit LSB pie executable, x86-64, dynamically linked,
+interpreter /lib64/ld-linux-x86-64.so.2, stripped
+```
+
+### You do not need all of `staging_dir/host/lib`
+
+That directory is **143 MB**. The transitive `DT_NEEDED` closure of `.apk.bin` is three
+libraries totalling 2.1 MB:
+
+```
+ld-linux-x86-64.so.2   173 KB
+libc.so.6             1856 KB
+libpthread.so.0        115 KB
+```
+
+So the complete extraction set is six files, **3.9 MB**:
+
+```
+staging_dir/host/bin/apk                    (wrapper, 224 B)
+staging_dir/host/bin/.apk.bin               (1.9 MB)
+staging_dir/host/lib/ld-linux-x86-64.so.2
+staging_dir/host/lib/libc.so.6
+staging_dir/host/lib/libpthread.so.0
+staging_dir/host/lib/runas.so               (14 KB, LD_PRELOAD from the wrapper)
+```
+
+Extracted straight from the network without ever storing the 285 MB tarball:
+
+```sh
+curl -fsS "$BASE/$SDK" | zstd -dc | tar -x -C ext --strip-components=1 \
+  '*/staging_dir/host/bin/apk'   '*/staging_dir/host/bin/.apk.bin' \
+  '*/staging_dir/host/lib'
+```
+
+### Neither bash nor glibc is required to run it
+
+Invoking the loader directly bypasses the wrapper, so `bash` is not needed. Because the
+loader and libc are bundled, the host libc is irrelevant — it runs unmodified on a
+musl-only Alpine image:
+
+```sh
+$ docker run --rm --platform linux/amd64 -v "$PWD/min":/opt/apk:ro alpine:3 \
+    /opt/apk/lib/ld-linux-x86-64.so.2 --library-path /opt/apk/lib \
+    /opt/apk/bin/.apk.bin --version
+apk-tools 3.0.5, compiled for x86_64.
+```
+
+`LD_PRELOAD=runas.so` is also not required for `mkndx`/`mkpkg`/`adbdump` to run. It is
+kept in the extraction set anyway: it is 14 KB, and the wrapper sets it for ownership
+handling that packaging as a non-root user may depend on.
+
+### macOS needs a container
+
+`.apk.bin` is a Linux x86-64 ELF. On darwin there is nothing to run it with, so the
+SDK-extraction path requires Docker there. It works under Docker Desktop's amd64
+emulation on Apple silicon (slowly). This is the concrete form of the design's open
+question about whether owfeed can be container-free on macOS: for the SDK route, no.
+
+---
+
+## Signature verification of the SDK itself
+
+`sha256sums.sig` is a usign (signify-style ed25519) detached signature. The key id is in
+the signature, and `github.com/openwrt/keyring/usign/` names its key files by that same
+id, so the key is addressable directly from the signature:
+
+```sh
+$ base64 -d <<< "$(tail -1 sha256sums.sig)" | xxd | head -1
+# magic "Ed", then 8-byte key id b5043e70f9a75cde, then a 64-byte signature
+```
+
+```
+$ sha256sum b5043e70f9a75cde
+d7ac10f9ed1b38033855f3d27c9327d558444fca804c685b17d9dcfb0648228f
+```
+
+Reading the key id out of the signature is a convenience for *locating* the key, never
+for deciding whether to trust it — an attacker who can replace the signature can put any
+key id in it. The trusted set of key ids and their hashes has to be pinned independently.
+
+`internal/usign` verifies this natively, so no C toolchain is on the path; the test in
+that package verifies a real 25.12.5 release artifact.
