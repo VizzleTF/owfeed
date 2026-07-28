@@ -128,7 +128,12 @@ func sanitiseName(s string) string {
 }
 
 func scaffold(name, url string) string {
-	return fmt.Sprintf(`# yaml-language-server: $schema=https://owfeed.dev/schema/v1.json
+	// No $schema modeline. There was one, pointing at a host that does not exist and
+	// a file that was never published — so the first line of every config owfeed
+	// generated was a promise it did not keep. It comes back when there is a schema
+	// to point at; until then the validator is the specification, and it rejects an
+	// unknown key rather than warning about it.
+	return fmt.Sprintf(`# Reference: https://github.com/VizzleTF/owfeed/blob/main/docs/examples.md
 version: 1
 
 feed:

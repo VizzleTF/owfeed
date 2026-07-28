@@ -10,6 +10,69 @@ The status quo is 35 SDK builds.
 
 ---
 
+## Install
+
+```sh
+go install github.com/VizzleTF/owfeed/cmd/owfeed@latest
+```
+
+Or a release binary, checked against the attestation GitHub's own workflow produced for it — not
+against a checksum from the same release, which whoever replaced the binary could replace too:
+
+```sh
+gh release download v0.1.4 -R VizzleTF/owfeed -p 'owfeed-linux-amd64'
+gh attestation verify owfeed-linux-amd64 -R VizzleTF/owfeed \
+  --signer-workflow VizzleTF/owfeed/.github/workflows/release.yml
+chmod +x owfeed-linux-amd64 && sudo mv owfeed-linux-amd64 /usr/local/bin/owfeed
+```
+
+In GitHub Actions, `VizzleTF/owfeed/setup@v0.1.4` does that verification for you. Builds exist for
+linux and darwin, amd64 and arm64.
+
+**What it needs.** Nothing for `build`, `sign`, `index` or `publish`: the apk toolchain is fetched
+from the OpenWrt SDK and verified against a pinned signing key, so there is no toolchain to install.
+`smoke` needs Docker, because installing on a real OpenWrt image is the whole point of it. On macOS
+`build` needs Docker too — apk-tools does not build there.
+
+---
+
+## Do you need a feed at all?
+
+Probably not, and this says so before it sells you anything.
+
+A key in `/etc/apk/keys` is a trust anchor for **every package name**, not just yours. A feed whose
+key leaks can offer a higher version of `dropbear` and win the resolution, and apk has no
+revocation — no CRL, no expiry, no way to say a key is dead.
+
+**One package people install occasionally:** publish signed release artifacts instead.
+`owfeed release` does exactly that — packages plus a signed manifest — and asks your users for
+nothing but a signature check. Skip the feed.
+
+**Several packages, or you want `apk upgrade` to work:** a feed is the only thing that does that,
+because apk upgrades from an index and nothing else. Then read on.
+
+---
+
+## Why not `openwrt/gh-action-sdk`?
+
+Because it is a compiler and this is a publisher. They do different halves, and most third-party
+packages only need the second.
+
+| | `gh-action-sdk` | `owfeed` |
+|---|---|---|
+| what it does | builds a package from source, in the SDK | packages a directory that is already built |
+| noarch across 35 architectures | 35 SDK builds | one, ~25 seconds |
+| index | — | signed, apk and opkg both |
+| signing | `PRIVATE_KEY` written into `$TOPDIR` | key never enters the build job |
+| publishing | — | GitHub Pages, gated |
+| proof it installs | — | `smoke`, on a real OpenWrt image, failing if apk wants `--allow-untrusted` |
+| proof the live feed works | — | `verify`, over the documented URL |
+
+If your package is compiled C, you want the SDK — and `owfeed` will happily package what it
+produced. If it is a LuCI theme, a LuCI app, a script or a static binary, the SDK is 35 builds to
+produce something that did not need compiling.
+
+---
 ## How it works
 
 **A feed is a directory of files served over HTTPS.** No server software, no database. You produce
@@ -237,8 +300,9 @@ owfeed refuses each of these. Every one has burned a real maintainer.
 
 - **apk has no revocation.** No CRL, no expiry, no kill signal. owfeed makes rotation cheap; it does
   not claim revocation exists.
-- **Your key is a trust anchor for every package name**, not just yours. If you ship one package
-  people install occasionally, signed release artifacts are a smaller ask.
+- **Your key is a trust anchor for every package name**, not just yours — see
+  [Do you need a feed at all?](#do-you-need-a-feed-at-all), which is the first thing this README
+  says for a reason.
 - **Attended Sysupgrade will not carry your packages across.** `owut` forwards no custom repositories
   and the ASU server's `repository_allow_list` is empty by default, which denies everything.
 - **`build` packages a directory; it does not build one.** Your CSS must already be built. owfeed
