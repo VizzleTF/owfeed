@@ -113,6 +113,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = a.sign(ctx, cmdArgs)
 	case "index":
 		err = a.index(ctx, cmdArgs)
+	case "doctor":
+		err = a.doctor(ctx, cmdArgs)
 	case "help", "-h", "--help":
 		usage(stdout)
 		return exitOK
@@ -177,6 +179,7 @@ Commands:
   build       build every configured package into a flat directory
   sign        sign the packages in a directory
   index       fan out the signed packages and build a signed index per architecture
+  doctor      check the built tree against everything that has burned a feed before
   version     print the version
 
 Flags:
