@@ -104,7 +104,7 @@ jobs:
     env:
       SOURCE_DATE_EPOCH: ${{ inputs.source-date-epoch }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: VizzleTF/owfeed/setup@v0.1.0
         with:
           version: ${{ inputs.owfeed-version }}
@@ -121,7 +121,7 @@ jobs:
       # approves, never a silent change to what this feed publishes.
       - run: owfeed --frozen-lock build
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: owfeed-packages
           path: dist/
@@ -135,15 +135,20 @@ jobs:
       contents: read
       pages: write
       id-token: write
+      # deploy-pages has needed this since v4: it resolves the artifact by id
+      # through the Actions API. Declaring any permissions block sets every
+      # undeclared scope to none, so leaving it out is a deploy that cannot read
+      # what the previous job uploaded.
+      actions: read
     env:
       SOURCE_DATE_EPOCH: ${{ inputs.source-date-epoch }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: VizzleTF/owfeed/setup@v0.1.0
         with:
           version: ${{ inputs.owfeed-version }}
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: owfeed-packages
           path: dist/
@@ -185,7 +190,14 @@ jobs:
           OWFEED_USIGN_KEY: ${{ secrets.usign-key }}
         run: owfeed publish
 
-      - uses: actions/upload-pages-artifact@v3
+      # include-hidden-files, or the deploy silently drops `.nojekyll`. From v4 this
+      # action excludes dotfiles by default, and `.nojekyll` is the file that stops
+      # Pages running Jekyll over a tree of binaries -- Jekyll then drops every path
+      # beginning with a dot or an underscore, from a tree that was correct when
+      # owfeed checked it. `owfeed publish` refuses a tree without that file; it
+      # cannot see an upload step that threw it away afterwards.
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: out
-      - uses: actions/deploy-pages@v4
+          include-hidden-files: true
+      - uses: actions/deploy-pages@v5

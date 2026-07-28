@@ -20,9 +20,11 @@ jobs:
       # release host does not control.
       id-token: write
       attestations: write
+      # attest v4 records artifact storage as well as the attestation itself.
+      artifact-metadata: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -51,9 +53,13 @@ jobs:
           cd dist && sha256sum owfeed-* > SHA256SUMS
           cat SHA256SUMS
 
-      # Every binary is attested individually, because that is what setup verifies:
-      # it downloads exactly one file and has to be able to check that one file.
-      - uses: actions/attest-build-provenance@v2
+      # One attestation covering all four binaries, not four attestations: the action
+      # collapses multiple subjects into a single statement that references each
+      # digest. Verification is still per-file, because a verifier looks its own
+      # file's digest up among those subjects -- measured, not assumed: a binary with
+      # one byte appended is rejected, and so is the same binary checked against a
+      # different repository.
+      - uses: actions/attest-build-provenance@v4
         with:
           subject-path: dist/owfeed-*
 

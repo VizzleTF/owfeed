@@ -122,6 +122,8 @@ func Run(ctx context.Context, opts Options) (*Report, error) {
 		}
 	}
 
+	checkNoJekyll(r, hc, base)
+
 	entries, err := liveIndex(ctx, hc, repo, opts.Format)
 	if err != nil {
 		return nil, err
@@ -344,4 +346,39 @@ func get(ctx context.Context, hc *http.Client, url string) ([]byte, int, error) 
 
 func expandLayout(path, release, arch string) string {
 	return config.ExpandLayout(path, release, arch)
+}
+
+// 514: the deploy has to have carried `.nojekyll`.
+//
+// This is the one failure `owfeed publish` cannot catch. It refuses a tree without
+// that file, and it is right to: Pages runs Jekyll unless told not to, and Jekyll
+// drops every path beginning with a dot or an underscore. But what publish inspects
+// is the tree on disk, and what subscribers fetch is whatever the upload step put in
+// the artifact -- and actions/upload-pages-artifact stopped including dotfiles by
+// default in v4. A feed can therefore be correct at every point owfeed can see and
+// still be deployed without the file that keeps it correct.
+//
+// So it is checked from outside, against the live site, which is the only place the
+// answer exists.
+func checkNoJekyll(r *Report, hc *http.Client, base string) {
+	r.Checked++
+	u := base + "/.nojekyll"
+	resp, err := hc.Get(u)
+	if err != nil {
+		// Not fatal on its own: a target that is not Pages has no reason to serve it,
+		// and a network failure here should not masquerade as a finding.
+		return
+	}
+	io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<10))
+	resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		return
+	}
+	r.add(Finding{
+		ID:   "OWF514",
+		What: fmt.Sprintf("%s answers %s", u, resp.Status),
+		Why: "GitHub Pages runs Jekyll without this file, and Jekyll drops every path beginning with a dot or an underscore; " +
+			"owfeed put it in the tree, so something between the tree and the site removed it",
+		Fix: "actions/upload-pages-artifact excludes dotfiles from v4 onwards -- set `include-hidden-files: true`",
+	})
 }

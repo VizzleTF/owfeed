@@ -574,3 +574,63 @@ So `postrm` and `preinst` carry the author's body and nothing else. Sourcing
 **opkg has no upgrade hook.** An upgrade is a removal followed by an install, which is why
 `prerm`/`postrm` appear in the upgrade row. apk's `pre-upgrade` and `post-upgrade` have no
 counterpart, so owfeed says so at build time rather than dropping them silently.
+
+# GitHub Actions, as it actually behaves
+
+Not package-manager behaviour, but the same kind of fact: measured against the live
+services in July 2026, and each one is a way a correct feed reaches subscribers broken.
+
+## `upload-pages-artifact` drops `.nojekyll` from v4
+
+From v4 the action excludes hidden files by default. `.nojekyll` is a hidden file,
+and it is the file that stops Pages running Jekyll over a tree of binaries — Jekyll
+then drops every path beginning with a dot or an underscore.
+
+So a feed can be correct at every point owfeed can inspect and be deployed without
+the thing that keeps it correct: `owfeed publish` refuses a tree that has no
+`.nojekyll`, but what it inspects is the tree, and what subscribers fetch is whatever
+the upload step put in the artifact.
+
+```yaml
+- uses: actions/upload-pages-artifact@v5
+  with:
+    path: out
+    include-hidden-files: true
+```
+
+`owfeed verify` fetches `<feed>/.nojekyll` from the live site and reports OWF514 when
+it is not there, because outside the deploy is the only place that answer exists.
+
+## `deploy-pages` needs `actions: read` from v4
+
+It resolves the artifact by id through the Actions API. Declaring a `permissions:`
+block sets every scope you did not name to `none`, so the natural-looking
+
+```yaml
+permissions: { contents: read, pages: write, id-token: write }
+```
+
+is a deploy that cannot read what the job before it uploaded.
+
+## An attestation over several files is one attestation, not several
+
+`actions/attest-build-provenance` with a glob produces a single statement referencing
+each subject's digest, not one statement per file. Verification is still per-file —
+a verifier looks up its own file's digest among the subjects. Measured: a binary with
+one byte appended is rejected, and so is an untampered binary checked against a
+different repository. Both fail as `HTTP 404` from the attestations API, which is the
+honest answer — there is no attestation for that digest under that repository.
+
+## `--repo` alone is a weaker check than it looks
+
+`gh attestation verify --repo <owner>/<repo>` accepts an attestation produced by *any*
+workflow in that repository that holds `attestations: write`. Adding one workflow via
+a merged pull request is enough to mint a valid attestation for arbitrary bytes.
+
+`--signer-workflow <owner>/<repo>/.github/workflows/release.yml` is what makes the
+check an assertion about how the artifact was built rather than about who owns the
+repository it came from.
+
+## `download-artifact` fails on a digest mismatch from v8
+
+Earlier versions logged a warning. This is the right default and worth having.

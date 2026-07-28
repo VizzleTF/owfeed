@@ -71,8 +71,15 @@ runs:
         # Verify BEFORE the binary is ever executed or put on PATH. A check that
         # runs after the thing it checks is not a check.
         if [ "$OWFEED_VERIFY" = "true" ]; then
-          if ! gh attestation verify "$dir/$asset" --repo VizzleTF/owfeed; then
-            echo "::error::$asset does not verify against VizzleTF/owfeed's build attestation -- refusing to install it"
+          # --signer-workflow, not just --repo. Checking the repository alone accepts
+          # an attestation produced by ANY workflow in it that has attestations:
+          # write -- so a merged pull request adding one workflow would be enough to
+          # mint a valid attestation for any bytes at all. Pinning the workflow file
+          # is what makes this an assertion about how the binary was built.
+          if ! gh attestation verify "$dir/$asset" \
+              --repo VizzleTF/owfeed \
+              --signer-workflow VizzleTF/owfeed/.github/workflows/release.yml; then
+            echo "::error::$asset does not verify as built by VizzleTF/owfeed's release workflow -- refusing to install it"
             rm -f "$dir/$asset"
             exit 1
           fi
