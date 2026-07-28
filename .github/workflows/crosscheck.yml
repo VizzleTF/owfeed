@@ -1,0 +1,108 @@
+name: Cross-check against owlab
+
+# owfeed and owlab both answer "which OpenWrt point release is newest on this
+# line, and does that line use apk or opkg", and neither reads the other. That
+# duplication is deliberate -- a shared library between them would be the
+# code-level dependency both designs refuse -- but the drift it invites is not.
+#
+# This is the whole defence: run both, diff the answers, open an issue when they
+# disagree. It cannot prevent divergence, only make it visible the night it
+# starts rather than when a subscriber on 24.10 gets a feed indexed with the wrong
+# tool.
+#
+# The dependency runs one way and stops at this workflow. owfeed's own build,
+# test and release path does not know owlab exists; an owlab outage reddens this
+# job and produces no broken owfeed binary. owlab, being the bottom of the stack,
+# never uses owfeed at all -- a cycle would mean neither could be released first.
+
+on:
+  schedule:
+    # Nightly. Upstream cuts a point release at most every few weeks, so anything
+    # more often is polling a server for an answer that has not changed.
+    - cron: '41 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  crosscheck:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Only to file the disagreement. Nothing here writes code.
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Built from this checkout rather than installed from a release: the point
+      # is to catch a disagreement introduced by a change that has not shipped
+      # yet, and a released binary cannot show one.
+      - run: go build -o "$RUNNER_TEMP/owfeed" ./cmd/owfeed
+
+      # owlab comes from its release, verified by attestation, because what is
+      # being checked is the answer owlab actually gives people.
+      - uses: VizzleTF/owlab/setup@v0.3.0
+        with:
+          version: v0.3.0
+
+      - id: compare
+        run: |
+          "$RUNNER_TEMP/owfeed" releases --json > owfeed.json
+          owlab releases --all --json > owlab.json
+
+          # Only OpenWrt: owfeed derives from downloads.openwrt.org and makes no
+          # claim about a fork, so comparing against ImmortalWrt would report a
+          # disagreement that is really a difference in scope.
+          #
+          # opkg vs ipk is a naming difference, not a disagreement: owlab names
+          # the package manager, owfeed names the package format. Mapped here
+          # rather than renamed in either tool, because each name is right in its
+          # own repository.
+          jq -n --slurpfile feed owfeed.json --slurpfile lab owlab.json '
+            ($feed[0].lines | map({key: .line, value: {point: .point, format: .format}}) | from_entries) as $f
+            | ($lab[0].distros[] | select(.distro == "openwrt") | .branches
+               | map({key: .branch,
+                      value: {point: .latest,
+                              format: (if .manager == "opkg" then "ipk" else .manager end)}})
+               | from_entries) as $l
+            | [ ($f | keys[]) as $line
+                | select($l[$line] != null)
+                | select($f[$line] != $l[$line])
+                | {line: $line, owfeed: $f[$line], owlab: $l[$line]} ]
+          ' > disagreements.json
+
+          n=$(jq 'length' disagreements.json)
+          echo "count=$n" >> "$GITHUB_OUTPUT"
+          if [ "$n" -eq 0 ]; then
+            echo "owfeed and owlab agree on every line both know about."
+            exit 0
+          fi
+          echo "::error::owfeed and owlab disagree about $n release line(s)"
+          jq -r '.[] | "\(.line): owfeed says \(.owfeed.point)/\(.owfeed.format), owlab says \(.owlab.point)/\(.owlab.format)"' \
+            disagreements.json | tee summary.txt
+
+      - if: steps.compare.outputs.count != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # One open issue, not one per night. A disagreement that takes a week to
+          # fix should not produce seven issues that each say the same thing.
+          existing=$(gh issue list --state open --label crosscheck --json number --jq '.[0].number')
+          body="$(printf 'owfeed and owlab disagree about what upstream publishes.\n\n```\n%s\n```\n\nRun: %s/%s/actions/runs/%s\n' \
+            "$(cat summary.txt)" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "owfeed and owlab disagree about upstream releases" \
+              --label crosscheck --body "$body"
+          fi
+
+          # Fail the run as well. An issue nobody has subscribed to is not a
+          # notification.
+          exit 1
