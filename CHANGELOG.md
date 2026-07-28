@@ -4,6 +4,11 @@ Dates are when the tag was cut. Anything not listed is documentation or tests.
 
 ## Unreleased
 
+- `owfeed sign` no longer requires a feed config. It takes `--key`, and resolves the
+  apk tool from the newest point release when no lockfile names one, so an author
+  can put the in-package signature on their own build without writing an
+  `owfeed.yml` and a 36-architecture lockfile to sign one file. A feed still signs
+  from its config, which is the pinned answer.
 - `owfeed release --sign-also FILE` signs a file published beside the packages —
   an installer script, most often — with the same key, without adding it to the
   manifest. The manifest is an inventory of packages a feed ingests, and a feed

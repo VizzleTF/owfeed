@@ -248,13 +248,12 @@ policy change in as a router addition. Beyond that, owfeed's validator rejects u
 blocks by design; permitting an `owlab:` section means whitelisting it, which is coupling
 the schemas.
 
-**One exception today, and it is a defect rather than a design.** `owfeed release` needs no
-config, but `owfeed sign` loads one — it reads the signing key from it, and the lockfile
-beside it to decide which SDK to take the apk tool from. So an author who wants the
-in-package signature must currently write a feed config and a 36-architecture lockfile to
-sign one file in `dist/noarch/`. That is why the rule above says "should" in practice: it
-holds for `owfeed release` and not yet for `owfeed sign`. Closing it means giving `sign` a
-`--key` flag and a default SDK release when no config is present.
+Neither of the two commands an author runs needs a feed config. `owfeed release` never did;
+`owfeed sign` used to, because it read the signing key from the config and the SDK release
+from the lockfile beside it — so putting a signature on one file in `dist/noarch/` meant
+writing a feed config and a 36-architecture lockfile first. It now takes `--key`, and
+resolves the apk tool from the newest point release when no lockfile names one. A feed
+still signs from its config, which is the pinned answer and the one to prefer.
 
 ## CI/CD composition
 
