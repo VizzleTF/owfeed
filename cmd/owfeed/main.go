@@ -127,6 +127,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = a.verify(ctx, cmdArgs)
 	case "verify-artifact":
 		err = a.verifyArtifact(cmdArgs)
+	case "release":
+		err = a.release(cmdArgs)
 	case "help", "-h", "--help":
 		usage(stdout)
 		return exitOK
@@ -197,6 +199,7 @@ Commands:
   smoke       install the built feed on a real OpenWrt image
   verify      check the published feed from outside, over its documented URL
   verify-artifact  check an upstream release against its author's signature
+  release     sign the built packages and write a manifest for a feed to consume
   install-snippet  print the instructions your subscribers follow
   version     print the version
 

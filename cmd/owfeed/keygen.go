@@ -7,6 +7,7 @@ import (
 
 	"github.com/VizzleTF/owfeed/internal/config"
 	"github.com/VizzleTF/owfeed/internal/keys"
+	"github.com/VizzleTF/owfeed/internal/usign"
 )
 
 func (a *app) keygen(args []string) error {
@@ -15,12 +16,15 @@ func (a *app) keygen(args []string) error {
 	name := fs.String("name", "", "key name (default: the feed name from owfeed.yml)")
 	out := fs.String("o", "", "where to write the private key (default: <name>.pem)")
 	force := fs.Bool("force", false, "write the key even inside a git working tree")
+	usignKey := fs.Bool("usign", false, "generate a usign release key instead of an apk signing key")
 	if err := fs.Parse(args); err != nil {
 		return wrap(exitConfig, err)
 	}
 
+	// The feed name is only needed to derive a default filename, so an explicit -o
+	// means there is nothing to look up.
 	feedName := *name
-	if feedName == "" {
+	if feedName == "" && *out == "" {
 		c, err := config.Load(a.configPath)
 		if err != nil {
 			return fail(exitConfig, "no --name given and no usable %s to take the feed name from", a.configPath)
@@ -47,6 +51,13 @@ func (a *app) keygen(args []string) error {
 				"so a key that reaches a commit has to be replaced on every subscriber by hand\n"+
 				"  write it outside the tree, or pass --force if you are certain it is ignored", path, root)
 		}
+	}
+
+	// Two different keys for two different readers. apk verifies EC signatures
+	// inside a package; a release manifest is read by installers and by feeds, which
+	// speak usign. Neither can stand in for the other.
+	if *usignKey {
+		return a.keygenUsign(abs)
 	}
 
 	key, err := keys.Generate()
@@ -105,4 +116,33 @@ func rel(path string) string {
 		return path
 	}
 	return r
+}
+
+// keygenUsign writes a usign keypair, for signing release manifests.
+func (a *app) keygenUsign(path string) error {
+	key, err := usign.Generate()
+	if err != nil {
+		return wrap(exitKey, err)
+	}
+	sec, err := key.MarshalPrivate("owfeed release key")
+	if err != nil {
+		return wrap(exitKey, err)
+	}
+	if err := os.WriteFile(path, sec, 0o600); err != nil {
+		return wrap(exitKey, err)
+	}
+	pub := path[:len(path)-len(filepath.Ext(path))] + ".pub"
+	if err := os.WriteFile(pub, key.MarshalPublic("owfeed release key"), 0o644); err != nil {
+		return wrap(exitKey, err)
+	}
+
+	a.logf("wrote %s (private, mode 0600)", rel(path))
+	a.logf("wrote %s (public — this is what a feed pins to verify your releases)", rel(pub))
+	a.logf("")
+	a.logf("key id: %s", key.ID)
+	a.logf("")
+	a.logf("This signs release manifests, not packages. A feed that carries your work pins")
+	a.logf("the public half, so its signature can mean \"the author signed this\" rather than")
+	a.logf("\"this downloaded successfully\".")
+	return nil
 }
