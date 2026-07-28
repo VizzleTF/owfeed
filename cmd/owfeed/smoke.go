@@ -5,6 +5,7 @@ import (
 	"flag"
 
 	"github.com/VizzleTF/owfeed/internal/config"
+	"github.com/VizzleTF/owfeed/internal/lock"
 	"github.com/VizzleTF/owfeed/internal/smoke"
 )
 
@@ -38,7 +39,19 @@ func (a *app) smoke(ctx context.Context, args []string) error {
 		line = c.DefaultRelease().Line
 	}
 
-	format := c.DefaultRelease().Format
+	// The format belongs to the line being smoked, not to the default one. Reading
+	// it from the default sends the apk script to a 24.10 router, where the first
+	// command is `apk` and there is no apk.
+	format := ""
+	for _, r := range c.Releases {
+		if r.Line == line {
+			format = r.Format
+		}
+	}
+	if format == "" {
+		return fail(exitConfig, "owfeed.yml configures no release line %q", line)
+	}
+
 	opts := smoke.Options{Format: format}
 	if format == config.FormatIPK {
 		key, err := a.usignKey(c)
@@ -59,7 +72,7 @@ func (a *app) smoke(ctx context.Context, args []string) error {
 		Dir:          out,
 		FeedName:     c.Feed.Name,
 		Release:      line,
-		PointRelease: l.Toolchain.SDKRelease,
+		PointRelease: pointFor(l, line),
 		LayoutPath:   c.Layout.Path,
 		Arch:         *arch,
 		Image:        *image,
@@ -92,4 +105,14 @@ func (a *app) smoke(ctx context.Context, args []string) error {
 	// than implying the whole matrix was exercised.
 	a.logf("this covered %s only; the other architectures are covered by the index checks", res.Arch)
 	return nil
+}
+
+// pointFor is the concrete release recorded for a line, so a smoke run installs on
+// an image from the line it is testing rather than from whichever one the toolchain
+// happens to be pinned to.
+func pointFor(l *lock.Lock, line string) string {
+	if r, ok := l.Release(line); ok {
+		return r.Point
+	}
+	return l.Toolchain.SDKRelease
 }

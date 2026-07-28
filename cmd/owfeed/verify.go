@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 
+	"github.com/VizzleTF/owfeed/internal/config"
 	"github.com/VizzleTF/owfeed/internal/smoke"
 	"github.com/VizzleTF/owfeed/internal/verify"
 )
@@ -49,7 +50,7 @@ func (a *app) verify(ctx context.Context, args []string) error {
 		Release:    line,
 		LayoutPath: c.Layout.Path,
 		Arch:       *arch,
-		Format:     c.DefaultRelease().Format,
+		Format:     formatOf(c, line),
 		LocalDir:   local,
 	})
 	if err != nil {
@@ -73,4 +74,17 @@ func (a *app) verify(ctx context.Context, args []string) error {
 		a.logf("note: %s", n)
 	}
 	return nil
+}
+
+// formatOf is the package format a release line uses. Like smoke, verify accepts a
+// line and must not read the default's format instead: the two lines publish
+// different files under different names, so even fetching the index needs this
+// right.
+func formatOf(c *config.Config, line string) string {
+	for _, r := range c.Releases {
+		if r.Line == line {
+			return r.Format
+		}
+	}
+	return config.FormatAPK
 }
