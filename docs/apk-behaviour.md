@@ -231,6 +231,65 @@ build reproducible.
 
 ---
 
+## On a real router image
+
+Run against `openwrt/rootfs:x86-64-25.12.4`, against a feed built by owfeed and
+mounted read-only. This settles three claims the design made from first principles.
+
+### A signed index makes `apk add` work with no flag
+
+```sh
+cp /repo/demofeed.pem /etc/apk/keys/demofeed.pem
+echo "/repo/releases/25.12/$(cat /etc/apk/arch)/packages.adb" > /etc/apk/repositories.d/demofeed.list
+apk update
+#   Demo feed [/repo/releases/25.12/x86_64/packages.adb]
+#   OK: 11274 distinct packages available
+apk add luci-app-demo
+#   (1/1) Installing luci-app-demo (1.0.0-r1)
+#     Executing luci-app-demo-1.0.0-r1.post-install
+#   OK: 11.8 MiB in 137 packages
+```
+
+The installed files are owned `root root`, which is the point of the `--root`
+passwd trick above, and the sidecars arrive where sysupgrade looks for them:
+`/lib/apk/packages/luci-app-demo.{list,conffiles,conffiles_static}`.
+
+### Signing each package fixes `apk add ./file.apk`, and therefore LuCI's upload
+
+This is the claim the design derived rather than observed. It holds:
+
+```sh
+apk add /tmp/luci-app-demo-1.0.0-r1.apk        # key installed
+#   (1/1) Installing luci-app-demo (1.0.0-r1)
+#   exit=0
+
+rm /etc/apk/keys/demofeed.pem                  # key removed
+apk add /tmp/luci-app-demo-1.0.0-r1.apk
+#   ERROR: /tmp/luci-app-demo-1.0.0-r1.apk: UNTRUSTED signature
+#   exit=99
+```
+
+No `--allow-untrusted` in either case. OpenWrt's own 25.12 packages are unsigned
+individually (commit `084697e`), so this path always needs the flag for them — and
+LuCI's Upload Package flow cannot supply it, because `package-manager-call` drops
+arguments it does not recognise (luci#8482). A trusted per-package signature is the
+missing link, and signing each package costs nothing.
+
+### A local install pins the package forever
+
+```sh
+apk add /tmp/luci-app-demo-1.0.0-r1.apk
+grep demo /etc/apk/world
+#   luci-app-demo><Q1tr1HVcrdHMqaRRH78PhUKaT5XPo=
+```
+
+The `><` operator pins by content hash, so the package will never again be upgraded
+from the repository, and `/etc/apk/world` survives sysupgrade. Documentation must
+therefore never offer local installation as the way to install from a feed. (The
+hash is base64, not hex as the design assumed — the behaviour is what matters.)
+
+---
+
 ## Extracting a host apk from the SDK
 
 The SDK ships `staging_dir/host/bin/apk` as a **bash** wrapper around a hidden real
