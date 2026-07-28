@@ -19,7 +19,7 @@ func (a *app) index(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("owfeed index", flag.ContinueOnError)
 	fs.SetOutput(a.err)
 	out := fs.String("o", defaultOut, "directory to write the publishable tree into")
-	format := fs.String("format", config.FormatAPK, "apk for 25.12 and later, ipk for 24.10 and earlier")
+	onlyLine := fs.String("release", "", "index only this release line")
 	if err := fs.Parse(args); err != nil {
 		return wrap(exitConfig, err)
 	}
@@ -37,8 +37,33 @@ func (a *app) index(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if *format == config.FormatIPK {
-		return a.indexIPK(c, l, dist, *out)
+	// One command, every line the config declares. A feed serving both is two feeds
+	// under one URL, and building them separately is how one of them goes stale.
+	lines := 0
+	for _, r := range c.Releases {
+		if *onlyLine != "" && r.Line != *onlyLine {
+			continue
+		}
+		if r.Format == config.FormatIPK {
+			if err := a.indexIPK(c, l, r, dist, *out); err != nil {
+				return err
+			}
+			lines++
+		}
+	}
+
+	var apkLines []config.Release
+	for _, r := range c.Releases {
+		if (*onlyLine == "" || r.Line == *onlyLine) && r.Format == config.FormatAPK {
+			apkLines = append(apkLines, r)
+		}
+	}
+	if len(apkLines) == 0 {
+		if lines == 0 {
+			return fail(exitConfig, "no release line matched --release %q", *onlyLine)
+		}
+		// Nothing else to do: the ipk side already wrote its key and its trees.
+		return nil
 	}
 
 	tool, err := a.tool(ctx, l)
@@ -78,7 +103,7 @@ func (a *app) index(ctx context.Context, args []string) error {
 		return wrap(exitKey, err)
 	}
 
-	for _, r := range c.Releases {
+	for _, r := range apkLines {
 		lr, ok := l.Release(r.Line)
 		if !ok {
 			return fail(exitConflict, "owfeed.lock has no entry for release line %s; run `owfeed lock --update`", r.Line)

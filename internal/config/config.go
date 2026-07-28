@@ -190,6 +190,12 @@ type Package struct {
 	// or "git-describe".
 	VersionFrom string `yaml:"version-from"`
 
+	// Releases are the release lines this package is published to. Empty means all
+	// of them, which is right for anything that runs on both — but a package that
+	// depends on something only one line has must say so, or it lands in a feed
+	// where it cannot resolve.
+	Releases []string `yaml:"releases"`
+
 	// Files is the staged rootfs handed to `apk mkpkg --files`.
 	//
 	// It may contain {arch}, which is required when the package names more than one
@@ -428,6 +434,19 @@ const DefaultReleaseLine = "25.12"
 
 // DefaultKeyEnv is the environment variable a signing key is read from by default.
 const DefaultKeyEnv = "OWFEED_SIGN_KEY"
+
+// PublishedOn reports whether a package belongs on a release line.
+func (p Package) PublishedOn(line string) bool {
+	if len(p.Releases) == 0 {
+		return true
+	}
+	for _, r := range p.Releases {
+		if r == line {
+			return true
+		}
+	}
+	return false
+}
 
 // Auto reports whether this release derives its architecture set.
 func (r Release) Auto() bool { return r.Arches.Auto }

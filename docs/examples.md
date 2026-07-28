@@ -2,7 +2,7 @@
 
 *[Русская версия](examples_ru.md)*
 
-Four worked examples, smallest first. Each one is a directory you already have, a config, and four
+Five worked examples, smallest first. Each one is a directory you already have, a config, and four
 commands. If the shape of a feed is not yet clear, [How it works](../README.md#how-it-works) is
 twenty lines.
 
@@ -11,6 +11,7 @@ twenty lines.
 - [Two packages from one repository: podkop](#two-packages-from-one-repository-podkop) — conflicts,
   real dependencies
 - [A compiled binary: podkop-updater](#a-compiled-binary-podkop-updater) — several architectures
+- [Both release lines from one config](#both-release-lines-from-one-config) — apk and opkg
 
 ---
 
@@ -302,3 +303,53 @@ own.
 The mapping from GOARCH to OpenWrt architectures belongs in your fetch script, not in owfeed — it is
 a property of your toolchain, not of packaging. A worked one is in
 [VizzleTF/owfeed-packages](https://github.com/VizzleTF/owfeed-packages), a live feed built this way.
+
+---
+
+## Both release lines from one config
+
+25.12 is apk and 24.10 is opkg. A package that runs on both goes to both; one that does not says so.
+
+```yaml
+releases:
+  - line: "25.12"
+    default: true
+    format: apk
+  - line: "24.10"
+    format: ipk
+
+signing:
+  key: env:OWFEED_SIGN_KEY        # EC, for apk
+  usign-key: env:OWFEED_USIGN_KEY # usign, for opkg — each manager verifies only its own
+
+packages:
+  - name: luci-app-mine           # no `releases:` — published on both
+    build: mkpkg
+    arch: noarch
+    version: 1.0.0-r1
+    files: ./dist/root
+    url: https://github.com/you/mine
+
+  - name: luci-app-mine-next
+    releases: ["25.12"]           # 25.12 only
+    build: mkpkg
+    arch: noarch
+    version: 1.0.0-r1
+    files: ./next/root
+    url: https://github.com/you/mine
+```
+
+```sh
+owfeed build && owfeed sign && owfeed index && owfeed doctor
+#   built dist/noarch/luci-app-mine-1.0.0-r1.apk (25.12)
+#   built dist/noarch/luci-app-mine-next-1.0.0-r1.apk (25.12)
+#   built dist/all/luci-app-mine_1.0.0-r1_all.ipk (24.10)
+#   24.10: signed by usign key 3af054550a655062
+#   25.12: ... signed by key 05353a8e456d078a46325b13310c9b96
+```
+
+One tree, two feeds under one URL. A 24.10 router never sees `luci-app-mine-next`: it is not in that
+line's index at all, which is the point of saying which lines a package belongs to rather than
+publishing everything everywhere and hoping dependencies sort it out.
+
+Verified on real routers with [owlab](https://github.com/VizzleTF/owlab), one per manager.

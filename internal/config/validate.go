@@ -190,6 +190,11 @@ func (c *Config) validatePackages(path string) error {
 		return errf(path, "packages is empty; there is nothing to build")
 	}
 
+	seenLine := map[string]bool{}
+	for _, r := range c.Releases {
+		seenLine[r.Line] = true
+	}
+
 	seen := map[string]bool{}
 	for i, p := range c.Packages {
 		where := fmt.Sprintf("packages[%d]", i)
@@ -224,6 +229,16 @@ func (c *Config) validatePackages(path string) error {
 
 		if err := validateArch(path, where, p); err != nil {
 			return err
+		}
+		// A line nobody configured is a package that silently goes nowhere.
+		for _, line := range p.Releases {
+			if !seenLine[line] {
+				return &Error{
+					Path: path,
+					Msg:  fmt.Sprintf("%s.releases names %q, which is not a configured release line", where, line),
+					Hint: "add the line under `releases:`, or drop it here to publish on every line",
+				}
+			}
 		}
 
 		if p.Files == "" {

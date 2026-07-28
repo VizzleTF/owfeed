@@ -2,7 +2,7 @@
 
 *[English version](examples.md)*
 
-Четыре разобранных примера, от простого к сложному. Каждый — это каталог, который у вас уже есть,
+Пять разобранных примеров, от простого к сложному. Каждый — это каталог, который у вас уже есть,
 конфиг и четыре команды. Если форма фида ещё не сложилась в голове,
 [Как это устроено](../README_ru.md#как-это-устроено) — двадцать строк.
 
@@ -11,6 +11,7 @@
 - [Два пакета из одного репозитория: podkop](#два-пакета-из-одного-репозитория-podkop) — конфликты,
   реальные зависимости
 - [Скомпилированный бинарь: podkop-updater](#скомпилированный-бинарь-podkop-updater) — несколько архитектур
+- [Обе релиз-линии из одного конфига](#обе-релиз-линии-из-одного-конфига) — apk и opkg
 
 ---
 
@@ -301,3 +302,51 @@ payload — если бы могли, пакет был бы `noarch`, — по�
 вашего тулчейна, а не упаковки. Рабочий пример — в
 [VizzleTF/owfeed-packages](https://github.com/VizzleTF/owfeed-packages), живом фиде, собранном
 именно так.
+
+---
+
+## Обе релиз-линии из одного конфига
+
+25.12 — это apk, 24.10 — opkg. Пакет, который работает на обеих, едет в обе; тот, который нет, — говорит об этом.
+
+```yaml
+releases:
+  - line: "25.12"
+    default: true
+    format: apk
+  - line: "24.10"
+    format: ipk
+
+signing:
+  key: env:OWFEED_SIGN_KEY        # EC, для apk
+  usign-key: env:OWFEED_USIGN_KEY # usign, для opkg — каждый менеджер проверяет только свою схему
+
+packages:
+  - name: luci-app-mine           # нет `releases:` — публикуется в обе
+    build: mkpkg
+    arch: noarch
+    version: 1.0.0-r1
+    files: ./dist/root
+    url: https://github.com/you/mine
+
+  - name: luci-app-mine-next
+    releases: ["25.12"]           # только 25.12
+    build: mkpkg
+    arch: noarch
+    version: 1.0.0-r1
+    files: ./next/root
+    url: https://github.com/you/mine
+```
+
+```sh
+owfeed build && owfeed sign && owfeed index && owfeed doctor
+#   built dist/noarch/luci-app-mine-1.0.0-r1.apk (25.12)
+#   built dist/all/luci-app-mine_1.0.0-r1_all.ipk (24.10)
+#   24.10: signed by usign key 3af054550a655062
+```
+
+Одно дерево, два фида под одним URL. Роутер на 24.10 не увидит `luci-app-mine-next` никогда: его нет
+в индексе той линии. Ради этого линии и указываются явно, а не «публикуем всё везде и надеемся, что
+зависимости разрулят».
+
+Проверено на настоящих роутерах через [owlab](https://github.com/VizzleTF/owlab), по одному на менеджер.

@@ -17,7 +17,7 @@ import (
 // it gzipped while the signature covers the uncompressed form, verifies usign
 // rather than EC, and is pointed at a directory rather than at the index file. A
 // feed serving both lines is really two feeds under one URL.
-func (a *app) indexIPK(c *config.Config, l *lock.Lock, dist, out string) error {
+func (a *app) indexIPK(c *config.Config, l *lock.Lock, r config.Release, dist, out string) error {
 	key, err := a.usignKey(c)
 	if err != nil {
 		return err
@@ -31,10 +31,7 @@ func (a *app) indexIPK(c *config.Config, l *lock.Lock, dist, out string) error {
 		return fail(exitIndex, "%s holds no .ipk files; run `owfeed build --format ipk` first", dist)
 	}
 
-	for _, r := range c.Releases {
-		if r.Format != config.FormatIPK {
-			continue
-		}
+	{
 		lr, ok := l.Release(r.Line)
 		if !ok {
 			return fail(exitConflict, "owfeed.lock has no entry for release line %s; run `owfeed lock --update`", r.Line)
@@ -83,7 +80,7 @@ func (a *app) indexIPK(c *config.Config, l *lock.Lock, dist, out string) error {
 	if err := os.WriteFile(filepath.Join(out, key.ID.String()), key.MarshalPublic(c.Feed.Name), 0o644); err != nil {
 		return wrap(exitIndex, err)
 	}
-	a.logf("wrote %s, signed by usign key %s", out, key.ID)
+	a.logf("%s: signed by usign key %s", r.Line, key.ID)
 	return nil
 }
 

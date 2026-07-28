@@ -54,6 +54,24 @@ The stages map onto that one to one:
 
 ---
 
+**Two release lines, two package managers.** 25.12 and later is apk; 24.10 and earlier is opkg, and
+they agree on almost nothing — a different index, a different signature scheme, a different word for
+"architecture-independent". owfeed publishes either or both from one config, and holds both to the
+same checks.
+
+| | 25.12+ (apk) | 24.10 and earlier (opkg) |
+|---|---|---|
+| index | binary `packages.adb` | text `Packages` + `Packages.gz` |
+| signed over | the index itself | the **uncompressed** `Packages` |
+| signature | EC prime256v1 | usign / ed25519 |
+| repository line | URL of the index **file** | URL of the **directory** |
+| key installed as | `/etc/apk/keys/<any name>.pem` | `/etc/opkg/keys/<key id>` |
+| per-package signature | yes | none — trust rests on the index |
+| "any architecture" | `noarch` | `all` |
+
+A feed serving both signs with two keys. That is not a choice: each manager verifies only its own
+scheme.
+
 ## I want to publish a feed
 
 ```sh
@@ -81,6 +99,26 @@ owfeed build && owfeed sign && owfeed index && owfeed doctor
 ## I want to add a package
 
 Add another entry under `packages:`. Same four commands.
+
+## I want a package on one line only
+
+```yaml
+releases:
+  - line: "25.12"
+    default: true
+    format: apk
+  - line: "24.10"
+    format: ipk
+
+packages:
+  - name: luci-app-mine        # no `releases:` — goes to both
+    ...
+  - name: luci-app-mine-new
+    releases: ["25.12"]        # 25.12 only
+    ...
+```
+
+One `owfeed build` produces every line, in each line's format. One `owfeed index` publishes them all.
 
 ## I want to tell users how to install it
 

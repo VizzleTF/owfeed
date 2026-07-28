@@ -10,6 +10,7 @@ import (
 
 	"github.com/VizzleTF/owfeed/internal/apk"
 	"github.com/VizzleTF/owfeed/internal/build"
+	"github.com/VizzleTF/owfeed/internal/config"
 	"github.com/VizzleTF/owfeed/internal/lock"
 )
 
@@ -19,8 +20,8 @@ func (a *app) build(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("owfeed build", flag.ContinueOnError)
 	fs.SetOutput(a.err)
 	out := fs.String("o", defaultDist, "directory to write packages into")
-	only := fs.String("package", "", "build only this package")
-	format := fs.String("format", build.FormatAPK, "apk for 25.12 and later, ipk for 24.10 and earlier")
+	onlyPkg := fs.String("package", "", "build only this package")
+	onlyLine := fs.String("release", "", "build only this release line")
 	if err := fs.Parse(args); err != nil {
 		return wrap(exitConfig, err)
 	}
@@ -33,14 +34,6 @@ func (a *app) build(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	// The ipk path needs no apk at all — and could not have one, since the 24.10
-	// SDK ships opkg rather than apk-tools.
-	var tool *apk.Tool
-	if *format != build.FormatIPK {
-		if tool, err = a.tool(ctx, l); err != nil {
-			return err
-		}
-	}
 
 	if err := os.MkdirAll(*out, 0o755); err != nil {
 		return wrap(exitBuild, err)
@@ -52,41 +45,69 @@ func (a *app) build(ctx context.Context, args []string) error {
 	}
 
 	built := 0
-	for _, p := range c.Packages {
-		if *only != "" && p.EffectiveName() != *only {
+	needAPK := false
+	for _, r := range c.Releases {
+		if *onlyLine != "" && r.Line != *onlyLine {
 			continue
 		}
-		version, err := build.ResolveVersion(p, a.root())
-		if err != nil {
-			return wrap(exitBuild, err)
+		if r.Format == config.FormatAPK {
+			needAPK = true
 		}
-		// A package names one architecture or many; each is built from its own
-		// staged payload, because two architectures that could share one payload
-		// would be a noarch package.
-		for _, arch := range p.Arch.List {
-			res, err := build.Build(ctx, tool, build.Request{
-				Package:         p,
-				Feed:            c.Feed,
-				Root:            a.root(),
-				Version:         version,
-				Arch:            arch,
-				OutDir:          *out,
-				SourceDateEpoch: epoch,
-				Format:          *format,
-			})
+	}
+
+	// The apk toolchain is only fetched when an apk line is actually being built.
+	// A feed publishing only for 24.10 has no use for it, and the 24.10 SDK does
+	// not carry it anyway.
+	var tool *apk.Tool
+	if needAPK {
+		if tool, err = a.tool(ctx, l); err != nil {
+			return err
+		}
+	}
+
+	for _, r := range c.Releases {
+		if *onlyLine != "" && r.Line != *onlyLine {
+			continue
+		}
+		for _, p := range c.Packages {
+			if *onlyPkg != "" && p.EffectiveName() != *onlyPkg {
+				continue
+			}
+			// A package says which lines it belongs to; saying nothing means all of
+			// them, which is right for anything that runs on both.
+			if !p.PublishedOn(r.Line) {
+				continue
+			}
+
+			version, err := build.ResolveVersion(p, a.root())
 			if err != nil {
 				return wrap(exitBuild, err)
 			}
-			a.logf("built %s", rel(res.File))
-			for _, note := range res.Notes {
-				a.logf("  note: %s", note)
+			for _, arch := range p.Arch.List {
+				res, err := build.Build(ctx, tool, build.Request{
+					Package:         p,
+					Feed:            c.Feed,
+					Root:            a.root(),
+					Version:         version,
+					Arch:            arch,
+					OutDir:          *out,
+					SourceDateEpoch: epoch,
+					Format:          r.Format,
+				})
+				if err != nil {
+					return wrap(exitBuild, err)
+				}
+				a.logf("built %s (%s)", rel(res.File), r.Line)
+				for _, note := range res.Notes {
+					a.logf("  note: %s", note)
+				}
+				built++
 			}
-			built++
 		}
 	}
 
 	if built == 0 {
-		return fail(exitConfig, "no package matched --package %q", *only)
+		return fail(exitConfig, "nothing to build: no package matched the given --package and --release")
 	}
 	// Packages leave here unsigned on purpose: the stage that runs build inputs is
 	// not the stage that holds the signing key.
