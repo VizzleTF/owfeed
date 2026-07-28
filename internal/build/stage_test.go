@@ -82,6 +82,29 @@ func TestCopyTreeRejects(t *testing.T) {
 			},
 			wantSub: "world-writable",
 		},
+		{
+			// The most damaging shape of mistake this path allows: the package
+			// builds, installs and looks right, and has no translations.
+			name: "gettext sources instead of compiled catalogues",
+			setup: func(t *testing.T, src string) {
+				write(t, filepath.Join(src, "usr/lib/lua/luci/i18n/theme.ru.po"), "msgid \"\"\n", 0o644)
+			},
+			wantSub: "po2lmo",
+		},
+		{
+			name: "macOS metadata",
+			setup: func(t *testing.T, src string) {
+				write(t, filepath.Join(src, "www/luci-static/.DS_Store"), "\x00", 0o644)
+			},
+			wantSub: "macOS",
+		},
+		{
+			name: "stylesheet source",
+			setup: func(t *testing.T, src string) {
+				write(t, filepath.Join(src, "www/luci-static/demo/style.scss"), "body{}\n", 0o644)
+			},
+			wantSub: "compiled CSS",
+		},
 	}
 
 	for _, tc := range tests {

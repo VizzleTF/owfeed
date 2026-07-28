@@ -60,6 +60,7 @@ Each of these has burned a real maintainer, and each is a `doctor` gate:
 | A missing `sysupgrade.conf` line | `/etc/apk/keys/*.pem` do **not** survive sysupgrade — the top cause of post-upgrade "UNTRUSTED signature" reports |
 | A dependency that provides `wget` | swaps the user's fetcher and breaks their `apk update` entirely ([openwrt#24270](https://github.com/openwrt/openwrt/issues/24270)) |
 | A README that drifted from the real URL | already live in a major feed today |
+| A payload staged from a source tree | `.po` files instead of compiled `.lmo` catalogues means the package installs cleanly with no translations at all |
 
 ### Things it will tell you honestly
 
@@ -69,6 +70,13 @@ Each of these has burned a real maintainer, and each is a `doctor` gate:
   actually do; it does not pretend revocation exists.
 - **A key in `/etc/apk/keys` is a trust anchor for everything.** If you ship one package that people
   install occasionally, loose signed artifacts may be the smaller ask. owfeed says so during `init`.
+- **The SDK-less path packages a staged rootfs; it does not build one.** `apk mkpkg` turns a directory
+  into a package in about a second, which is the whole point — but the directory has to be what you
+  want installed. For a LuCI package that means the CSS is already built and the `.po` catalogues are
+  already compiled to `.lmo`. owfeed will not compile them for you: the catalogue's basename is a
+  packaging decision rather than a derivable one, and getting it wrong causes a file conflict with the
+  `luci-i18n-*` package an older router still owns, which breaks the very upgrade it was meant to
+  deliver. It does refuse to package the sources, so the mistake is loud rather than silent.
 
 ## Design document
 

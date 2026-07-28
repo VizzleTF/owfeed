@@ -16,6 +16,59 @@ import (
 // metaDir is where OpenWrt keeps a package's sidecar metadata inside the payload.
 const metaDir = "lib/apk/packages"
 
+// notPayload names things that are build inputs or host residue rather than package
+// content, with the reason stated in the terms that matter to whoever staged them.
+//
+// This is the only defence against the most damaging shape of mistake the mkpkg path
+// allows: pointing `files:` at a source tree. The package builds, installs and looks
+// right, and something the source tree implied is simply missing on the router.
+var notPayload = []struct {
+	match  func(name, path string) bool
+	reason string
+}{
+	{
+		match: func(name, _ string) bool {
+			return strings.HasSuffix(name, ".po") || strings.HasSuffix(name, ".pot")
+		},
+		// LuCI reads compiled .lmo catalogues; a .po in the payload means the
+		// compilation step did not run, and the package ships with no translations
+		// while appearing complete.
+		reason: "gettext source. LuCI loads compiled .lmo catalogues, so a package carrying .po files has no translations at all.\n" +
+			"  Compile them with po2lmo (it is built by luci-base, and your package's Makefile already invokes it) and stage the .lmo files instead.\n" +
+			"  owfeed will not do this for you: the catalogue's basename is a packaging decision, not a derivable one — luci-theme-footstrap deliberately names its catalogues\n" +
+			"  footstrap-theme.<lang>.lmo rather than footstrap.<lang>.lmo so they do not collide with the luci-i18n-* package an older router still owns, and a collision there breaks the upgrade",
+	},
+	{
+		match:  func(name, _ string) bool { return name == ".DS_Store" },
+		reason: "macOS directory metadata, which would be installed on every router",
+	},
+	{
+		match:  func(name, _ string) bool { return name == ".git" || name == ".gitignore" },
+		reason: "repository metadata",
+	},
+	{
+		match:  func(name, _ string) bool { return name == "node_modules" },
+		reason: "build dependencies",
+	},
+	{
+		match: func(name, _ string) bool {
+			return strings.HasSuffix(name, ".scss") || strings.HasSuffix(name, ".less")
+		},
+		reason: "stylesheet source; routers serve the compiled CSS",
+	},
+}
+
+// rejectNonPayload reports whether an entry is something no package should contain.
+func rejectNonPayload(name, slash string) error {
+	for _, r := range notPayload {
+		if r.match(name, slash) {
+			return fmt.Errorf("/%s is %s\n  "+
+				"this usually means `files:` points at a source tree rather than at a staged rootfs", slash, r.reason)
+		}
+	}
+	return nil
+}
+
 // copyTree copies a staged rootfs into the payload directory.
 //
 // The user's directory is never written to. Sidecar metadata has to live inside the
@@ -43,6 +96,10 @@ func copyTree(src, dst string, epoch time.Time) error {
 		}
 		out := filepath.Join(dst, rel)
 		slash := filepath.ToSlash(rel)
+
+		if err := rejectNonPayload(d.Name(), slash); err != nil {
+			return err
+		}
 
 		switch {
 		case d.IsDir():
