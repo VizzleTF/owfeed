@@ -15,9 +15,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -69,7 +74,10 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 	}
 	image := opts.Image
 	if image == "" {
-		image = DefaultImage(opts.PointRelease)
+		var err error
+		if image, err = ResolveImage(ctx, opts.Release, opts.PointRelease); err != nil {
+			return nil, err
+		}
 	}
 
 	repoDir := filepath.Join(opts.Dir, expandLayout(opts.LayoutPath, opts.Release, arch))
@@ -120,19 +128,89 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 	return res, nil
 }
 
-// DefaultImage names the router image for a concrete point release.
+// ResolveImage picks the router image to install on.
 //
-// A point release and not the branch tag. The branch image points at the
+// A point release and never the branch tag. The branch image points at the
 // -SNAPSHOT repositories, whose kmods directory is keyed by kernel vermagic and is
 // replaced whenever the kernel moves — so `apk update` inside it fails for reasons
 // that have nothing to do with the feed under test. A check that goes red for
 // somebody else's rotation is a check people learn to ignore.
 //
-// Container images trail the newest point release by a little, so a run may need
-// --image on the day one ships. That failure is loud and specific, which is the
-// right trade against a flaky one.
-func DefaultImage(point string) string {
-	return fmt.Sprintf("openwrt/rootfs:x86-64-%s", point)
+// The images trail the newest point release, sometimes by weeks, so the release
+// the feed is *built* against is frequently one nobody has published an image for.
+// Asking which tags exist and taking the newest is the difference between a check
+// that works on the day a release ships and one that has to be repaired by hand.
+func ResolveImage(ctx context.Context, line, point string) (string, error) {
+	tags, err := imageTags(ctx, line)
+	if err != nil || len(tags) == 0 {
+		// The registry is not reachable, or has nothing for this line. Fall back to
+		// the release the feed was built against and let docker report the truth.
+		if point == "" {
+			return "", fmt.Errorf("cannot tell which %s router image to use: %w", line, err)
+		}
+		return imageRef(point), nil
+	}
+	// Prefer the release the feed was built against, when an image for it exists.
+	for _, t := range tags {
+		if t == point {
+			return imageRef(t), nil
+		}
+	}
+	return imageRef(tags[len(tags)-1]), nil
+}
+
+func imageRef(point string) string { return "openwrt/rootfs:x86-64-" + point }
+
+// pointTagRE matches a final point release, so release candidates are not picked
+// up: an -rc image is a router nobody is running.
+var pointTagRE = regexp.MustCompile(`^x86-64-([0-9]+\.[0-9]+\.[0-9]+)$`)
+
+// imageTags lists the published point releases for a line, oldest first.
+func imageTags(ctx context.Context, line string) ([]string, error) {
+	url := "https://hub.docker.com/v2/repositories/openwrt/rootfs/tags?page_size=100&name=x86-64-" + line
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GET %s: %s", url, resp.Status)
+	}
+
+	var doc struct {
+		Results []struct {
+			Name string `json:"name"`
+		} `json:"results"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&doc); err != nil {
+		return nil, err
+	}
+
+	var out []string
+	for _, r := range doc.Results {
+		if m := pointTagRE.FindStringSubmatch(r.Name); m != nil {
+			out = append(out, m[1])
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return lessPoint(out[i], out[j]) })
+	return out, nil
+}
+
+// lessPoint orders point releases numerically, so 25.12.10 follows 25.12.9.
+func lessPoint(a, b string) bool {
+	as, bs := strings.Split(a, "."), strings.Split(b, ".")
+	for i := 0; i < len(as) && i < len(bs); i++ {
+		x, _ := strconv.Atoi(as[i])
+		y, _ := strconv.Atoi(bs[i])
+		if x != y {
+			return x < y
+		}
+	}
+	return len(as) < len(bs)
 }
 
 const (
