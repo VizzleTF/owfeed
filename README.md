@@ -2,8 +2,8 @@
 
 *[Русская версия](README_ru.md)*
 
-One binary. Turns a directory into a signed apk feed for **OpenWrt 25.12+**, so your users run three
-lines and `apk add` works.
+One binary. Turns a directory into a signed feed for **both release lines** — apk for OpenWrt 25.12
+and later, opkg for 24.10 and earlier — so your users run three lines and `apk add` works.
 
 A noarch package across all 35 architectures — built, signed, indexed, laid out — takes ~25 seconds.
 The status quo is 35 SDK builds.
@@ -67,6 +67,8 @@ packages only need the second.
 | publishing | — | GitHub Pages, gated |
 | proof it installs | — | `smoke`, on a real OpenWrt image, failing if apk wants `--allow-untrusted` |
 | proof the live feed works | — | `verify`, over the documented URL |
+| release lines | one per run | apk and opkg from one config, each signed with the scheme its manager verifies |
+| config | workflow inputs | `owfeed.yml`, with a [published schema](schema/v1.json) generated from the code |
 
 If your package is compiled C, you want the SDK — and `owfeed` will happily package what it
 produced. If it is a LuCI theme, a LuCI app, a script or a static binary, the SDK is 35 builds to
@@ -269,6 +271,10 @@ making a publishing tool depend on a development tool would make "will this feed
 whether owlab was installed correctly, for the sake of sharing some Docker invocation. Develop with
 owlab if you want to; publish with owfeed either way.
 
+They still compose, through a file format rather than a dependency: `owlab build` writes
+`dist/<arch>/` and every stage here reads it. The boundary, the invariants either side of it, and
+the contracts that cross it are written down in [ECOSYSTEM.md](docs/ECOSYSTEM.md).
+
 ## I want to check what is already live
 
 ```sh
@@ -319,8 +325,14 @@ owfeed refuses each of these. Every one has burned a real maintainer.
 
 ## Not there yet
 
-SDK builds · GitHub Action and reusable workflow · Cloudflare R2 and rsync · SBOM · key rotation
-commands · reusing an already-published package instead of re-signing it unchanged.
+Cloudflare R2 and rsync · SBOM · key rotation commands · reusing an already-published package
+instead of re-signing it unchanged.
+
+**SDK builds are not on this list, and are not coming.** owfeed packages, it does not compile.
+Build with [owlab](https://github.com/VizzleTF/owlab), `openwrt/gh-action-sdk`, or your own SDK
+call, and leave the result in `dist/<arch>/` — every stage here reads that directory and asks
+nothing about how the bytes were made. See [the artifact contract](docs/artifact-contract.md) and
+[ECOSYSTEM.md](docs/ECOSYSTEM.md) for where the boundary runs and why it is drawn there.
 
 ---
 
