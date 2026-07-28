@@ -2,7 +2,7 @@
 
 *[Русская версия](examples_ru.md)*
 
-Three worked examples, smallest first. Each one is a directory you already have, a config, and four
+Four worked examples, smallest first. Each one is a directory you already have, a config, and four
 commands. If the shape of a feed is not yet clear, [How it works](../README.md#how-it-works) is
 twenty lines.
 
@@ -10,6 +10,7 @@ twenty lines.
 - [A LuCI theme: luci-theme-footstrap](#a-luci-theme-luci-theme-footstrap) — translations
 - [Two packages from one repository: podkop](#two-packages-from-one-repository-podkop) — conflicts,
   real dependencies
+- [A compiled binary: podkop-updater](#a-compiled-binary-podkop-updater) — several architectures
 
 ---
 
@@ -230,8 +231,8 @@ grep -rl __COMPILED_VERSION_VARIABLE__ staging | xargs sed -i "s/__COMPILED_VERS
 ```sh
 owfeed lock --update
 owfeed build && owfeed sign && owfeed index && owfeed doctor
-#   built dist/podkop-0.28072026-r1.apk
-#   built dist/luci-app-podkop-0.28072026-r1.apk
+#   built dist/noarch/podkop-0.28072026-r1.apk
+#   built dist/noarch/luci-app-podkop-0.28072026-r1.apk
 #     note: compiled 1 translation catalogue(s): /usr/lib/lua/luci/i18n/podkop.ru.lmo
 #   25.12: 2 package(s) across 35 architecture(s)
 #   390 checks passed
@@ -264,3 +265,40 @@ what the config above does — means a router that installed the language packag
 release already owns `/usr/lib/lua/luci/i18n/podkop.ru.lmo`. Either keep shipping the language
 packages, or pick a basename that does not collide, as `luci-theme-footstrap` does. owfeed will not
 guess for you; `doctor` cannot see the other package either.
+
+---
+
+## A compiled binary: podkop-updater
+
+A static Go binary needs no OpenWrt SDK — only a build for the right target — so the SDK-less path
+is not restricted to `noarch`. One upstream artifact usually serves several OpenWrt architectures
+that share a GOARCH: one `arm64` build covers all four `aarch64_*`.
+
+```yaml
+- name: podkop-updater
+  build: mkpkg
+  arch:
+    - x86_64                 # GOARCH=amd64
+    - aarch64_cortex-a53     # GOARCH=arm64, all four of these
+    - aarch64_cortex-a72
+    - aarch64_cortex-a76
+    - aarch64_generic
+    - mipsel_24kc            # GOARCH=mipsle, GOMIPS=softfloat
+    - mipsel_74kc
+  version-from: file:./staging/podkop-updater.version
+  files: ./staging/podkop-updater/{arch}
+  description: "Watches podkop releases and drives update and rollback from Telegram."
+```
+
+`{arch}` is required whenever more than one architecture is named. Two architectures cannot share a
+payload — if they could, the package would be `noarch` — so leaving it out is an error rather than a
+silent mistake.
+
+Builds land in `dist/<arch>/`, because apk derives a package's filename from its name and version
+alone: two architectures of one package would collide in a flat directory. Indexing then places a
+`noarch` package into every architecture's directory and an architecture-specific one only into its
+own.
+
+The mapping from GOARCH to OpenWrt architectures belongs in your fetch script, not in owfeed — it is
+a property of your toolchain, not of packaging. A worked one is in
+[VizzleTF/owfeed-packages](https://github.com/VizzleTF/owfeed-packages), a live feed built this way.

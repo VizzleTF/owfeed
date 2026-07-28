@@ -2,7 +2,7 @@
 
 *[English version](examples.md)*
 
-Три разобранных примера, от простого к сложному. Каждый — это каталог, который у вас уже есть,
+Четыре разобранных примера, от простого к сложному. Каждый — это каталог, который у вас уже есть,
 конфиг и четыре команды. Если форма фида ещё не сложилась в голове,
 [Как это устроено](../README_ru.md#как-это-устроено) — двадцать строк.
 
@@ -10,6 +10,7 @@
 - [Тема LuCI: luci-theme-footstrap](#тема-luci-luci-theme-footstrap) — переводы
 - [Два пакета из одного репозитория: podkop](#два-пакета-из-одного-репозитория-podkop) — конфликты,
   реальные зависимости
+- [Скомпилированный бинарь: podkop-updater](#скомпилированный-бинарь-podkop-updater) — несколько архитектур
 
 ---
 
@@ -229,8 +230,8 @@ grep -rl __COMPILED_VERSION_VARIABLE__ staging | xargs sed -i "s/__COMPILED_VERS
 ```sh
 owfeed lock --update
 owfeed build && owfeed sign && owfeed index && owfeed doctor
-#   built dist/podkop-0.28072026-r1.apk
-#   built dist/luci-app-podkop-0.28072026-r1.apk
+#   built dist/noarch/podkop-0.28072026-r1.apk
+#   built dist/noarch/luci-app-podkop-0.28072026-r1.apk
 #     note: compiled 1 translation catalogue(s): /usr/lib/lua/luci/i18n/podkop.ru.lmo
 #   25.12: 2 package(s) across 35 architecture(s)
 #   390 checks passed
@@ -263,3 +264,40 @@ podkop объявляет `LUCI_LANGUAGES:=en ru`, из-за чего `luci.mk` 
 `/usr/lib/lua/luci/i18n/podkop.ru.lmo`. Либо продолжайте выпускать языковые пакеты, либо возьмите
 basename, который не столкнётся, как сделала `luci-theme-footstrap`. owfeed за вас не угадает —
 `doctor` тоже не видит чужой пакет.
+
+---
+
+## Скомпилированный бинарь: podkop-updater
+
+Статическому Go-бинарю не нужен OpenWrt SDK — нужна сборка под правильный таргет, — поэтому
+SDK-less путь не ограничен `noarch`. Один апстримный артефакт обычно покрывает несколько
+OpenWrt-архитектур с общим GOARCH: одна сборка `arm64` закрывает все четыре `aarch64_*`.
+
+```yaml
+- name: podkop-updater
+  build: mkpkg
+  arch:
+    - x86_64                 # GOARCH=amd64
+    - aarch64_cortex-a53     # GOARCH=arm64, все четыре
+    - aarch64_cortex-a72
+    - aarch64_cortex-a76
+    - aarch64_generic
+    - mipsel_24kc            # GOARCH=mipsle, GOMIPS=softfloat
+    - mipsel_74kc
+  version-from: file:./staging/podkop-updater.version
+  files: ./staging/podkop-updater/{arch}
+  description: "Watches podkop releases and drives update and rollback from Telegram."
+```
+
+`{arch}` обязателен, как только архитектур больше одной. Две архитектуры не могут делить один
+payload — если бы могли, пакет был бы `noarch`, — поэтому пропуск шаблона это ошибка, а не тихий
+промах.
+
+Сборка кладётся в `dist/<arch>/`, потому что apk выводит имя файла только из имени и версии: две
+архитектуры одного пакета столкнулись бы в плоском каталоге. Индексация потом кладёт `noarch`-пакет
+в каталог каждой архитектуры, а пер-архитектурный — только в свой.
+
+Соответствие GOARCH → OpenWrt-архитектуры живёт в вашем fetch-скрипте, а не в owfeed: это свойство
+вашего тулчейна, а не упаковки. Рабочий пример — в
+[VizzleTF/owfeed-packages](https://github.com/VizzleTF/owfeed-packages), живом фиде, собранном
+именно так.
