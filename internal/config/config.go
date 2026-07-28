@@ -195,10 +195,39 @@ type Package struct {
 	// Scripts maps an apk script type (post-install, pre-deinstall, ...) to a file.
 	Scripts map[string]string `yaml:"scripts"`
 
+	// I18n compiles gettext catalogues into the payload. LuCI reads compiled .lmo
+	// files and ignores .po entirely, so without this a package's translations
+	// simply do not exist on the router.
+	I18n *I18n `yaml:"i18n"`
+
 	// ABIVersion is appended to the package name and mirrored into
 	// tags:openwrt:abiversion, which ImageBuilder needs to resolve the dependency.
 	ABIVersion string `yaml:"abiversion"`
 }
+
+// I18n describes a package's translation catalogues.
+type I18n struct {
+	// From is a directory laid out as <lang>/*.po, which is where both LuCI's own
+	// po/ convention and the i18n/ variant put them.
+	From string `yaml:"from"`
+
+	// Basename names the compiled catalogues: <basename>.<lang>.lmo. It defaults to
+	// the .po file's own name, which is what luci.mk uses.
+	//
+	// It is worth setting deliberately. LuCI's loader globs *.<lang>.lmo, so any
+	// basename is found — but if a package previously shipped its translations
+	// through a separate luci-i18n-<name>-<lang> package, a router upgrading from
+	// that release still owns the old path. Reusing it is a file conflict, and apk
+	// refuses the upgrade. luci-theme-footstrap moved to footstrap-theme.<lang>.lmo
+	// for exactly this reason.
+	Basename string `yaml:"basename"`
+
+	// Dest is where the catalogues are installed. The default is where LuCI looks.
+	Dest string `yaml:"dest"`
+}
+
+// DefaultI18nDest is LUCI_LIBRARYDIR/i18n, which is where lmo_load_catalog scans.
+const DefaultI18nDest = "/usr/lib/lua/luci/i18n"
 
 // Publish is one destination.
 type Publish struct {

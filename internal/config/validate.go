@@ -262,6 +262,14 @@ func (c *Config) validatePackages(path string) error {
 				return errf(path, "%s.conffiles entry %q must be an absolute path inside the package", where, cf)
 			}
 		}
+		if p.I18n != nil {
+			if p.I18n.From == "" {
+				return errf(path, "%s.i18n.from is required; point it at the directory holding <lang>/*.po", where)
+			}
+			if p.I18n.Dest != "" && !strings.HasPrefix(p.I18n.Dest, "/") {
+				return errf(path, "%s.i18n.dest %q must be an absolute path inside the package", where, p.I18n.Dest)
+			}
+		}
 		for t := range p.Scripts {
 			if !validScriptTypes[t] {
 				return &Error{

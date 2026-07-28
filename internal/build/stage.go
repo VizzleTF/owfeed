@@ -30,13 +30,10 @@ var notPayload = []struct {
 		match: func(name, _ string) bool {
 			return strings.HasSuffix(name, ".po") || strings.HasSuffix(name, ".pot")
 		},
-		// LuCI reads compiled .lmo catalogues; a .po in the payload means the
-		// compilation step did not run, and the package ships with no translations
-		// while appearing complete.
+		// LuCI reads compiled .lmo catalogues and ignores .po entirely, so a payload
+		// carrying the sources installs cleanly and has no translations.
 		reason: "gettext source. LuCI loads compiled .lmo catalogues, so a package carrying .po files has no translations at all.\n" +
-			"  Compile them with po2lmo (it is built by luci-base, and your package's Makefile already invokes it) and stage the .lmo files instead.\n" +
-			"  owfeed will not do this for you: the catalogue's basename is a packaging decision, not a derivable one — luci-theme-footstrap deliberately names its catalogues\n" +
-			"  footstrap-theme.<lang>.lmo rather than footstrap.<lang>.lmo so they do not collide with the luci-i18n-* package an older router still owns, and a collision there breaks the upgrade",
+			"  Point `i18n.from:` at the directory holding <lang>/*.po and owfeed will compile them into the payload for you",
 	},
 	{
 		match:  func(name, _ string) bool { return name == ".DS_Store" },

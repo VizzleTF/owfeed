@@ -90,7 +90,7 @@ owfeed refuses each of these. Every one has burned a real maintainer.
 | No `sysupgrade.conf` line | `/etc/apk/keys/*.pem` do **not** survive sysupgrade. Top cause of post-upgrade `UNTRUSTED signature`. |
 | Indexing before signing | signing appends bytes, so the index no longer matches the file. |
 | `/etc/config/foo` not in `conffiles:` | sysupgrade replaces the user's settings with your defaults, silently, every upgrade. |
-| `.po` files in the payload | the package installs clean and has no translations. |
+| `.po` files in the payload | LuCI reads compiled `.lmo`. Point `i18n.from:` at them and owfeed compiles them. |
 | A README that drifted | already live in a major feed today. |
 
 ## Things owfeed will not pretend
@@ -101,9 +101,9 @@ owfeed refuses each of these. Every one has burned a real maintainer.
   people install occasionally, signed release artifacts are a smaller ask.
 - **Attended Sysupgrade will not carry your packages across.** `owut` forwards no custom repositories
   and the ASU server's `repository_allow_list` is empty by default, which denies everything.
-- **`build` packages a directory; it does not build one.** Your CSS must be built and your `.po`
-  already compiled to `.lmo`. owfeed refuses to package the sources rather than shipping a package
-  that looks complete and is not.
+- **`build` packages a directory; it does not build one.** Your CSS must already be built. owfeed
+  does compile your `.po` catalogues — LuCI reads `.lmo` and ignores `.po`, so that gap is silent
+  and worth closing — but it will not run your build for you, and it refuses to package sources.
 
 ## Not there yet
 

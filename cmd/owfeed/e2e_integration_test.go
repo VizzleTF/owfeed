@@ -36,6 +36,9 @@ packages:
     description: "Built by owfeed's acceptance test."
     depends: [luci-base]
     conffiles: ["/etc/config/acceptance"]
+    i18n:
+      from: ./i18n
+      basename: acceptance-theme
 `
 
 func requireIntegration(t *testing.T) {
@@ -71,6 +74,16 @@ func TestIntegrationAcceptance(t *testing.T) {
 	writeFile(t, filepath.Join(payload, "etc", "init.d", "acceptance"), "#!/bin/sh /etc/rc.common\nSTART=95\nstart() { :; }\n", 0o755)
 	writeFile(t, filepath.Join(payload, "www", "luci-static", "acceptance", "style.css"), "body{margin:0}\n", 0o644)
 	writeFile(t, filepath.Join(feed, "owfeed.yml"), feedConfig, 0o644)
+
+	// Real catalogues, so the compiled .lmo files are the ones LuCI would load
+	// rather than a toy the compiler happens to accept.
+	for _, lang := range []string{"ru", "es"} {
+		po, err := os.ReadFile(filepath.Join("..", "..", "internal", "lmo", "testdata", "footstrap-"+lang+".po"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeFile(t, filepath.Join(feed, "i18n", lang, "acceptance.po"), string(po), 0o644)
+	}
 
 	// The key lives outside the feed directory, which is what keygen insists on for
 	// a directory inside a git working tree.
@@ -133,6 +146,11 @@ test -f /etc/config/acceptance
 test -f /www/luci-static/acceptance/style.css
 test -f /lib/apk/packages/luci-app-acceptance.list
 test -f /lib/apk/packages/luci-app-acceptance.conffiles_static
+# Translations: LuCI reads compiled .lmo and ignores .po, so a package that shipped
+# the sources would install exactly like this one and have no translations.
+test -s /usr/lib/lua/luci/i18n/acceptance-theme.ru.lmo
+test -s /usr/lib/lua/luci/i18n/acceptance-theme.es.lmo
+grep -q acceptance-theme.ru.lmo /lib/apk/packages/luci-app-acceptance.list
 # Ownership: apk records owners by name, and an unresolvable uid becomes "nobody",
 # so a package built by an ordinary user installs owned by nobody. busybox here has
 # no stat applet, hence find.

@@ -55,6 +55,8 @@ The source layout is LuCI's, and the mapping is `luci.mk`'s:
 | `root/` | `/` |
 | `i18n/<lang>/*.po` | `/usr/lib/lua/luci/i18n/<name>.<lang>.lmo` |
 
+Translations are not in the table because owfeed compiles those itself — see step 2.
+
 ```sh
 #!/bin/sh
 # stage.sh — produce dist/root, the directory owfeed packages.
@@ -65,33 +67,21 @@ rm -rf dist && mkdir -p "$DIST"
 
 ./"$SRC"/build-css.sh                       # minified CSS into htdocs/
 
-mkdir -p "$DIST/www" "$DIST/usr/share/ucode/luci" "$DIST/usr/lib/lua/luci/i18n"
+mkdir -p "$DIST/www" "$DIST/usr/share/ucode/luci"
 cp -a "$SRC"/htdocs/. "$DIST/www/"
 cp -a "$SRC"/ucode/.  "$DIST/usr/share/ucode/luci/"
 cp -a "$SRC"/root/.   "$DIST/"
 
-# Translations. LuCI loads compiled .lmo catalogues; shipping the .po does nothing.
-for po in "$SRC"/i18n/*/*.po; do
-  lang=$(basename "$(dirname "$po")")
-  po2lmo "$po" "$DIST/usr/lib/lua/luci/i18n/footstrap-theme.$lang.lmo"
-done
-
 git describe --tags --abbrev=0 | sed 's/^v//;s/$/-r1/' > dist/VERSION
 ```
 
-Two details in there are not cosmetic:
+No `po2lmo` call, and no need for one: it is a host tool built from `luci-base`, so requiring it
+would put a C build of the LuCI feed in front of anyone packaging a theme. owfeed has its own
+compiler, byte-identical to that tool's output.
 
-- **`po2lmo` comes from `luci-base`'s host build**, not from the SDK tarball. owfeed does not run it
-  for you, and that is deliberate — see below.
-- **The catalogue is `footstrap-theme.<lang>.lmo`, not `footstrap.<lang>.lmo`.** `lmo_load_catalog`
-  globs `*.<lang>.lmo`, so any basename loads. But a router upgrading from an older release still
-  owns `footstrap.ru.lmo` through the separate `luci-i18n-footstrap-ru` package. Same path means a
-  file conflict, and apk refuses the upgrade. The rename is what avoids it.
-
-This is why owfeed will not compile `.po` for you: the basename is a packaging decision, not a
-derivable one, and guessing it breaks exactly the case that motivated the rename. What owfeed does
-instead is **refuse to package a `.po` file**, so pointing `files:` at the source tree fails loudly
-rather than shipping a theme with no translations.
+Sources never go in the payload. Point `files:` at a source tree and owfeed refuses it by name —
+`.po`, `.scss`, `node_modules`, `.DS_Store` — rather than shipping a package that installs cleanly
+and is missing what the tree implied.
 
 ### 2. owfeed.yml
 
@@ -118,11 +108,24 @@ packages:
     description: "A modern, fast LuCI theme."
     depends: [luci-base]
     conffiles: ["/etc/config/footstrap"]
+    i18n:
+      from: ./luci-theme-footstrap/i18n     # a directory of <lang>/*.po
+      basename: footstrap-theme             # -> footstrap-theme.<lang>.lmo
 ```
 
-`conffiles` is the entry worth reading twice. The theme ships `/etc/config/footstrap`; leaving it
-undeclared means sysupgrade replaces the user's settings with the package defaults on every firmware
-upgrade, silently. `owfeed doctor` reports it as OWF207.
+Two entries are worth reading twice.
+
+**`conffiles`.** The theme ships `/etc/config/footstrap`; leaving it undeclared means sysupgrade
+replaces the user's settings with the package defaults on every firmware upgrade, silently.
+`owfeed doctor` reports it as OWF207.
+
+**`i18n.basename`.** It defaults to the `.po` file's own name, which is what `luci.mk` does — here
+that would be `footstrap.<lang>.lmo`. Footstrap sets it to `footstrap-theme` instead, and the reason
+is worth knowing before you pick your own. LuCI's loader globs `*.<lang>.lmo`, so any basename is
+found. But this theme used to ship its translations through separate `luci-i18n-footstrap-<lang>`
+packages, and a router upgrading from that release still owns `footstrap.ru.lmo`. Reusing the path
+is a file conflict, and apk refuses the upgrade — the one it was supposed to deliver. If your
+package never shipped a `luci-i18n-*` variant, the default is fine.
 
 ### 3. Build the feed
 

@@ -89,7 +89,7 @@ func TestCopyTreeRejects(t *testing.T) {
 			setup: func(t *testing.T, src string) {
 				write(t, filepath.Join(src, "usr/lib/lua/luci/i18n/theme.ru.po"), "msgid \"\"\n", 0o644)
 			},
-			wantSub: "po2lmo",
+			wantSub: "i18n.from",
 		},
 		{
 			name: "macOS metadata",

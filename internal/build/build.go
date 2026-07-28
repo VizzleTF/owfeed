@@ -51,6 +51,9 @@ type Result struct {
 	File string
 	// Notes are things worth saying that are not errors.
 	Notes []string
+	// Payload lists generated payload files, for reporting what a build produced
+	// that the source tree did not contain.
+	Payload []string
 }
 
 // Build stages the payload and runs `apk mkpkg`.
@@ -80,6 +83,12 @@ func Build(ctx context.Context, tool *apk.Tool, req Request) (*Result, error) {
 	if err := copyTree(filepath.Join(req.Root, p.Files), payload, req.SourceDateEpoch); err != nil {
 		return nil, fmt.Errorf("%s: staging %s: %w", name, p.Files, err)
 	}
+	// Catalogues are compiled into the payload before the sidecars are generated,
+	// so they appear in the package's own file list exactly as an SDK build's would.
+	catalogues, err := compileCatalogues(payload, req.Root, p.I18n, req.SourceDateEpoch)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", name, err)
+	}
 	if err := writeSidecars(payload, name, p.Conffiles, req.SourceDateEpoch); err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
 	}
@@ -105,12 +114,19 @@ func Build(ctx context.Context, tool *apk.Tool, req Request) (*Result, error) {
 		return nil, err
 	}
 
+	notes := meta.VersionAdvice(req.Version)
+	if len(catalogues) > 0 {
+		notes = append(notes, fmt.Sprintf("compiled %d translation catalogue(s): %s",
+			len(catalogues), strings.Join(catalogues, ", ")))
+	}
+
 	return &Result{
 		Name:    name,
 		Version: req.Version,
 		Arch:    p.Arch,
 		File:    out,
-		Notes:   meta.VersionAdvice(req.Version),
+		Notes:   notes,
+		Payload: catalogues,
 	}, nil
 }
 
