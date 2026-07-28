@@ -132,7 +132,30 @@ documented URL 404s is a live bug in a major feed right now.
 
 ## I want this in CI
 
+The whole thing, correctly shaped, is one job:
+
 ```yaml
+jobs:
+  publish:
+    uses: VizzleTF/owfeed/.github/workflows/feed.yml@v0.1.0
+    with:
+      owfeed-version: v0.1.0
+      smoke-releases: "25.12 24.10"
+    secrets:
+      sign-key: ${{ secrets.OWFEED_SIGN_KEY }}
+      usign-key: ${{ secrets.OWFEED_USIGN_KEY }}   # only if you serve 24.10
+```
+
+That splits build from publish so the signing key is never in the job that runs your build
+scripts, gates the upload on `owfeed publish`, and installs the packages on a real OpenWrt image
+before any of it goes out. `pre-build:` and `post-index:` take shell if your feed fetches or
+checks anything of its own.
+
+If you want the steps yourself, take the tool and leave the shape:
+
+```yaml
+- uses: VizzleTF/owfeed/setup@v0.1.0
+  with: { version: v0.1.0 }
 - run: owfeed --frozen-lock build && owfeed sign && owfeed index
   env:
     OWFEED_SIGN_KEY: ${{ secrets.OWFEED_SIGN_KEY }}
@@ -143,6 +166,10 @@ documented URL 404s is a live bug in a major feed right now.
 ```
 
 Put `publish` in a separate job with `environment:` so a fork PR cannot reach the key.
+
+`setup` downloads one binary and checks it against GitHub's build attestation before running it —
+not against a checksum file from the same release, which whoever replaced the binary could replace
+too.
 
 ## Upstream added an architecture
 

@@ -131,7 +131,30 @@ URL отдаёт 404, прямо сейчас живёт в природе.
 
 ## Хочу это в CI
 
+Всё целиком, в правильной форме, — один job:
+
 ```yaml
+jobs:
+  publish:
+    uses: VizzleTF/owfeed/.github/workflows/feed.yml@v0.1.0
+    with:
+      owfeed-version: v0.1.0
+      smoke-releases: "25.12 24.10"
+    secrets:
+      sign-key: ${{ secrets.OWFEED_SIGN_KEY }}
+      usign-key: ${{ secrets.OWFEED_USIGN_KEY }}   # только если обслуживаете 24.10
+```
+
+Он разводит сборку и публикацию, чтобы ключ подписи не оказался в job, который выполняет ваши
+сборочные скрипты, гейтит выгрузку через `owfeed publish` и ставит пакеты на живой образ OpenWrt
+до того, как что-либо уедет. `pre-build:` и `post-index:` принимают шелл, если ваш фид что-то
+докачивает или проверяет сам.
+
+Если шаги нужны свои — берите инструмент, оставьте форму:
+
+```yaml
+- uses: VizzleTF/owfeed/setup@v0.1.0
+  with: { version: v0.1.0 }
 - run: owfeed --frozen-lock build && owfeed sign && owfeed index
   env:
     OWFEED_SIGN_KEY: ${{ secrets.OWFEED_SIGN_KEY }}
@@ -142,6 +165,9 @@ URL отдаёт 404, прямо сейчас живёт в природе.
 ```
 
 Вынесите `publish` в отдельный job с `environment:`, чтобы PR из форка не дотянулся до ключа.
+
+`setup` скачивает один бинарь и сверяет его с build-аттестацией GitHub до запуска — не с файлом
+контрольных сумм из того же релиза, который тот, кто подменил бинарь, подменил бы заодно.
 
 ## В апстриме появилась новая архитектура
 
