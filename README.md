@@ -183,6 +183,24 @@ commands · reusing an already-published package instead of re-signing it unchan
 theme and a static Go binary across 20 architectures. Pull requests build, sign, index and check the
 whole thing with a throwaway key, so a fork never comes near the feed's own.
 
+
+## Someone else's CI, my feed
+
+A feed that carries other people's packages cannot hand them its signing key, and does not have to.
+Authors build and sign in their own CI and publish a signed release; the feed pulls, verifies the
+author's signature against a pinned key, and adds its own.
+
+apk signature blocks are additive, so the package a router installs carries **both** — the author's
+signature travels all the way to the device rather than being checked at ingest and discarded.
+
+```sh
+owfeed sign                       # in the author's CI, with the author's key
+owfeed doctor --require-origin    # every package says which repository it is from
+```
+
+[The feed's CONTRIBUTING](https://github.com/VizzleTF/owfeed-packages/blob/main/CONTRIBUTING.md)
+walks through both sides.
+
 ## Docs
 
 - [Examples](docs/examples.md) — a LuCI theme, a two-package feed, a compiled binary.
