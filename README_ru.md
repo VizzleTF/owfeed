@@ -141,9 +141,9 @@ jobs:
       pages: write
       id-token: write
       actions: read
-    uses: VizzleTF/owfeed/.github/workflows/feed.yml@v0.1.2
+    uses: VizzleTF/owfeed/.github/workflows/feed.yml@v0.1.3
     with:
-      owfeed-version: v0.1.2
+      owfeed-version: v0.1.3
       smoke-releases: "25.12 24.10"
     secrets:
       sign-key: ${{ secrets.OWFEED_SIGN_KEY }}
@@ -162,8 +162,8 @@ job нет environment, поэтому прочитать environment-секре
 Если шаги нужны свои — берите инструмент, оставьте форму:
 
 ```yaml
-- uses: VizzleTF/owfeed/setup@v0.1.2
-  with: { version: v0.1.2 }
+- uses: VizzleTF/owfeed/setup@v0.1.3
+  with: { version: v0.1.3 }
 - run: owfeed --frozen-lock build && owfeed sign && owfeed index
   env:
     OWFEED_SIGN_KEY: ${{ secrets.OWFEED_SIGN_KEY }}
