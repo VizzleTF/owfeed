@@ -22,6 +22,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -85,23 +87,33 @@ var refused = map[string]string{
 
 // Generate produces the schema document for the config package at dir.
 func Generate(dir string) ([]byte, error) {
-	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, dir, nil, parser.ParseComments)
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		name := e.Name()
+		// Tests describe the format's edge cases, not the format.
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		names = append(names, name)
+	}
+	// Deterministic, because the output is a checked-in file compared byte for byte.
+	sort.Strings(names)
 
+	fset := token.NewFileSet()
 	structs := map[string]*ast.StructType{}
 	docs := map[string]string{}
 	consts := map[string]string{}
 	nums := map[string]json.Number{}
-	for _, pkg := range pkgs {
-		for name, file := range pkg.Files {
-			if strings.HasSuffix(name, "_test.go") {
-				continue
-			}
-			collect(file, structs, docs, consts, nums)
+	for _, name := range names {
+		file, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, parser.ParseComments)
+		if err != nil {
+			return nil, err
 		}
+		collect(file, structs, docs, consts, nums)
 	}
 	if _, ok := structs[Root]; !ok {
 		return nil, fmt.Errorf("no %s struct in %s", Root, dir)
