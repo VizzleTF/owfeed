@@ -62,6 +62,72 @@ $APK adbsign --allow-untrusted --sign-key b.pem y.adb
 #   signature blocks: 2
 ```
 
+## An unsigned package is "untrusted", so signing one needs `--allow-untrusted`
+
+There is no bootstrap from unsigned. Neither `adbsign` nor `mkndx` will touch a
+package that carries no signature at all, and the diagnostic says `UNTRUSTED
+signature` for a file that has none:
+
+```sh
+$APK mkpkg --info name:h --info version:1.0-r1 --info arch:noarch --files root --output h.apk
+$APK adbsign --sign-key a.pem h.apk
+#   ERROR: h.apk: UNTRUSTED signature
+#   exit=0, signature count still 0
+
+$APK mkndx --sign-key a.pem --output i.adb ./h.apk
+#   ERROR: ./h.apk: UNTRUSTED signature
+#   ERROR: 1 errors, not creating index
+#   exit=99
+```
+
+This is why `--allow-untrusted` cannot be designed away entirely. It belongs on the
+signing step and nowhere else, because that is the one place the input is a file
+produced seconds earlier by the same run.
+
+## `--keys-dir` is honoured only when the path is absolute
+
+**A relative `--keys-dir` loads nothing and says nothing.** The failure looks
+identical to a signature that genuinely does not verify:
+
+```sh
+$APK --keys-dir pub       mkndx --sign-key a.pem -o i.adb ./h.apk   # ERROR: UNTRUSTED signature, exit=99
+$APK --keys-dir /work/pub mkndx --sign-key a.pem -o i.adb ./h.apk   # Index has 1 packages
+```
+
+With the absolute form, building an index is a real verification of every package
+signature it ingests — which is what makes `adbsign`'s useless exit status
+survivable: if signing silently did nothing, indexing fails.
+
+## `adbsign` appends signatures rather than replacing them
+
+Signing twice with different keys leaves both blocks in place, on packages as well
+as on indexes:
+
+```sh
+$APK --allow-untrusted adbsign --sign-key a.pem h.apk
+$APK --allow-untrusted adbsign --sign-key b.pem h.apk
+$APK adbdump h.apk | grep -c '^# sig'    # => 2
+```
+
+## The index records each package's `file-size`, so sign before indexing
+
+```
+packages: # 1 items
+  - name: h
+    version: 1.0-r1
+    hashes: 6cd348e1587b108cda4a141d8e35815ddb42cfdf3f11aff5b0bd9cf5b762b6f6
+    arch: noarch
+    installed-size: 2
+    file-size: 265
+```
+
+Signing appends bytes to the `.apk`, so a package signed after it was indexed no
+longer matches its own index entry. The order is not a preference.
+
+The index carries no file *names*: apk derives the download name from the package
+name and version, so the files have to sit flat beside `packages.adb` under exactly
+`<name>-<version>.apk`.
+
 ## `mkndx` does fail loudly on an unusable key
 
 Unlike `adbsign`, this one is trustworthy — exit 99, and no output file is left behind:

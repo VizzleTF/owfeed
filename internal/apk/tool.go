@@ -24,6 +24,19 @@ func KeyRef(name string) string { return keyRefPrefix + name }
 
 const keyRefPrefix = "\x00key:"
 
+// TrustDirRef marks the argument of `--keys-dir` for the same substitution.
+//
+// It exists separately from KeyRef because the two directories must not be one:
+// apk reads every file in the trust directory as a public key, and the private
+// keys live in the other one.
+//
+// The path apk is given here must be absolute. A relative --keys-dir loads no keys
+// at all, and apk does not say so — every signature then reports "UNTRUSTED
+// signature", which reads as a signing problem rather than as a path problem.
+func TrustDirRef() string { return trustRefPrefix }
+
+const trustRefPrefix = "\x00trustdir"
+
 // Tool is a resolved apk-tools 3.x installation.
 type Tool struct {
 	// Version is what `apk --version` reported, e.g. "apk-tools 3.0.5".
@@ -42,7 +55,12 @@ type Invocation struct {
 	Workdir string
 	// KeyDir holds signing keys referenced by KeyRef. Mounted read-only; may be empty.
 	KeyDir string
-	Args   []string
+	// TrustDir holds public keys apk should trust, referenced by TrustDirRef.
+	// Giving apk the feed's own public key turns the index step into a real check of
+	// the signatures produced by the signing step, rather than something waved
+	// through with --allow-untrusted.
+	TrustDir string
+	Args     []string
 }
 
 // Result is the outcome of one apk command. ExitCode is reported separately from err
@@ -84,11 +102,14 @@ func (t *Tool) RunOK(ctx context.Context, inv Invocation) (Result, error) {
 func redactKeyRefs(args []string) []string {
 	out := make([]string, len(args))
 	for i, a := range args {
-		if strings.HasPrefix(a, keyRefPrefix) {
+		switch {
+		case strings.HasPrefix(a, keyRefPrefix):
 			out[i] = "<key:" + strings.TrimPrefix(a, keyRefPrefix) + ">"
-			continue
+		case a == trustRefPrefix:
+			out[i] = "<trust-dir>"
+		default:
+			out[i] = a
 		}
-		out[i] = a
 	}
 	return out
 }
@@ -215,7 +236,17 @@ func (r *nativeRunner) exec(ctx context.Context, inv Invocation) (Result, error)
 	if len(argv) == 0 {
 		argv = []string{r.bin}
 	}
-	args, err := resolveKeyRefs(inv.Args, inv.KeyDir)
+	// apk resolves --keys-dir against nothing useful unless it is absolute, and
+	// reports the resulting empty trust set as an untrusted signature.
+	keyDir, err := absIfSet(inv.KeyDir)
+	if err != nil {
+		return Result{}, err
+	}
+	trustDir, err := absIfSet(inv.TrustDir)
+	if err != nil {
+		return Result{}, err
+	}
+	args, err := resolveRefs(inv.Args, keyDir, trustDir)
 	if err != nil {
 		return Result{}, err
 	}
@@ -235,13 +266,14 @@ type containerRunner struct {
 func (r *containerRunner) describe() string { return "docker " + r.image }
 
 const (
-	ctrSDK  = "/opt/owfeed-apk"
-	ctrWork = "/work"
-	ctrKeys = "/keys"
+	ctrSDK   = "/opt/owfeed-apk"
+	ctrWork  = "/work"
+	ctrKeys  = "/keys"
+	ctrTrust = "/trust"
 )
 
 func (r *containerRunner) exec(ctx context.Context, inv Invocation) (Result, error) {
-	args, err := resolveKeyRefs(inv.Args, ctrKeys)
+	args, err := resolveRefs(inv.Args, ctrKeys, ctrTrust)
 	if err != nil {
 		return Result{}, err
 	}
@@ -266,6 +298,13 @@ func (r *containerRunner) exec(ctx context.Context, inv Invocation) (Result, err
 		}
 		docker = append(docker, "-v", abs+":"+ctrKeys+":ro")
 	}
+	if inv.TrustDir != "" {
+		abs, err := filepath.Abs(inv.TrustDir)
+		if err != nil {
+			return Result{}, err
+		}
+		docker = append(docker, "-v", abs+":"+ctrTrust+":ro")
+	}
 	docker = append(docker, r.image,
 		ctrSDK+"/"+loaderPath, "--library-path", ctrSDK+"/"+libDirPath, ctrSDK+"/"+binPath)
 	docker = append(docker, args...)
@@ -273,10 +312,18 @@ func (r *containerRunner) exec(ctx context.Context, inv Invocation) (Result, err
 	return capture(exec.CommandContext(ctx, "docker", docker...))
 }
 
-// resolveKeyRefs replaces KeyRef placeholders with paths under keyDir.
-func resolveKeyRefs(args []string, keyDir string) ([]string, error) {
+// resolveRefs replaces the KeyRef and TrustDirRef placeholders with the paths those
+// directories are reachable at in the environment apk actually runs in.
+func resolveRefs(args []string, keyDir, trustDir string) ([]string, error) {
 	out := make([]string, len(args))
 	for i, a := range args {
+		if a == trustRefPrefix {
+			if trustDir == "" {
+				return nil, errors.New("apk: argument references the trust directory but none was provided")
+			}
+			out[i] = trustDir
+			continue
+		}
 		name, ok := strings.CutPrefix(a, keyRefPrefix)
 		if !ok {
 			out[i] = a
@@ -288,6 +335,13 @@ func resolveKeyRefs(args []string, keyDir string) ([]string, error) {
 		out[i] = filepath.Join(keyDir, name)
 	}
 	return out, nil
+}
+
+func absIfSet(path string) (string, error) {
+	if path == "" {
+		return "", nil
+	}
+	return filepath.Abs(path)
 }
 
 func capture(cmd *exec.Cmd) (Result, error) {
