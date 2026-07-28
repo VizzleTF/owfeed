@@ -1,0 +1,203 @@
+// Package smoke installs a built feed on a real OpenWrt image.
+//
+// Everything upstream of this checks a feed against a description of how apk
+// behaves. This checks it against apk. The distinction matters because every
+// failure this catches — a signature the device will not accept, a dependency that
+// does not resolve, a package that installs its files somewhere useless — looks
+// perfectly healthy in a static inspection of the tree.
+//
+// It is deliberately the last gate and not the only one: it exercises one
+// architecture, so it proves the feed works rather than that every architecture in
+// it does.
+package smoke
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+)
+
+// DefaultArch is the architecture smoked. It is x86_64 because that is the one
+// OpenWrt publishes a container image for and the one Docker runs without
+// emulation; the others are covered by the index checks rather than by installing.
+const DefaultArch = "x86_64"
+
+// Options configure a run.
+type Options struct {
+	// Dir is the published tree, as `owfeed index` wrote it.
+	Dir string
+	// FeedName seeds the key and repository filenames, matching the install snippet.
+	FeedName string
+	// Release is the release line, e.g. "25.12".
+	Release string
+	// LayoutPath is the layout template from the config.
+	LayoutPath string
+	// Arch is the architecture to install; empty means DefaultArch.
+	Arch string
+	// Image is the router image. Empty derives one from PointRelease.
+	Image string
+	// PointRelease is the concrete release the image should match, e.g. "25.12.4".
+	PointRelease string
+	// Packages are the names to install; empty means everything in the index.
+	Packages []string
+}
+
+// Result describes what happened.
+type Result struct {
+	Image string
+	Arch  string
+	// Installed are the packages that were installed by name from the repository.
+	Installed []string
+	// LocalInstall records whether `apk add ./file.apk` worked without
+	// --allow-untrusted, which is the claim per-package signing exists to make.
+	LocalInstall bool
+	// WorldPin is the /etc/apk/world entry a local install leaves behind.
+	WorldPin string
+	// Log is the container's combined output, for reporting a failure.
+	Log string
+}
+
+// Run installs the feed on a router image and reports what happened.
+func Run(ctx context.Context, opts Options) (*Result, error) {
+	arch := opts.Arch
+	if arch == "" {
+		arch = DefaultArch
+	}
+	image := opts.Image
+	if image == "" {
+		image = DefaultImage(opts.PointRelease)
+	}
+
+	repoDir := filepath.Join(opts.Dir, expandLayout(opts.LayoutPath, opts.Release, arch))
+	pkgs := opts.Packages
+	if len(pkgs) == 0 {
+		var err error
+		if pkgs, err = indexPackages(repoDir); err != nil {
+			return nil, err
+		}
+	}
+	if len(pkgs) == 0 {
+		return nil, fmt.Errorf("%s lists no packages to install", repoDir)
+	}
+
+	abs, err := filepath.Abs(opts.Dir)
+	if err != nil {
+		return nil, err
+	}
+
+	cmd := exec.CommandContext(ctx, "docker", "run", "--rm",
+		"--platform", "linux/amd64",
+		"-v", abs+":/feed:ro",
+		image, "sh", "-c", script(opts.FeedName, opts.Release, opts.LayoutPath, arch, pkgs))
+
+	out, runErr := cmd.CombinedOutput()
+	res := &Result{Image: image, Arch: arch, Installed: pkgs, Log: string(out)}
+
+	for _, line := range strings.Split(res.Log, "\n") {
+		if pin, ok := strings.CutPrefix(line, markerPin); ok {
+			res.WorldPin = strings.TrimSpace(pin)
+		}
+		if strings.HasPrefix(line, markerLocal) {
+			res.LocalInstall = true
+		}
+	}
+
+	if runErr != nil {
+		return res, fmt.Errorf("%s: the feed did not install: %w\n%s", image, runErr, res.Log)
+	}
+	if !strings.Contains(res.Log, markerDone) {
+		return res, fmt.Errorf("%s: the check did not run to completion\n%s", image, res.Log)
+	}
+	// If apk ever asks for this, the feed is not trusted as published and the run
+	// only appeared to succeed.
+	if strings.Contains(res.Log, "--allow-untrusted") {
+		return res, fmt.Errorf("%s: apk asked for --allow-untrusted, so the feed is not trusted as published\n%s", image, res.Log)
+	}
+	return res, nil
+}
+
+// DefaultImage names the router image for a concrete point release.
+//
+// A point release and not the branch tag. The branch image points at the
+// -SNAPSHOT repositories, whose kmods directory is keyed by kernel vermagic and is
+// replaced whenever the kernel moves — so `apk update` inside it fails for reasons
+// that have nothing to do with the feed under test. A check that goes red for
+// somebody else's rotation is a check people learn to ignore.
+//
+// Container images trail the newest point release by a little, so a run may need
+// --image on the day one ships. That failure is loud and specific, which is the
+// right trade against a flaky one.
+func DefaultImage(point string) string {
+	return fmt.Sprintf("openwrt/rootfs:x86-64-%s", point)
+}
+
+const (
+	markerDone  = "OWFEED-SMOKE-OK"
+	markerLocal = "OWFEED-SMOKE-LOCAL-OK"
+	markerPin   = "OWFEED-SMOKE-PIN "
+)
+
+// script is the sequence a subscriber follows, plus the assertions that make it a
+// check rather than a demonstration.
+func script(feed, release, layout, arch string, pkgs []string) string {
+	repo := "/feed/" + expandLayout(layout, release, arch) + "/packages.adb"
+	first := pkgs[0]
+
+	return `set -e
+mkdir -p /etc/apk/keys /etc/apk/repositories.d
+cp /feed/` + feed + `.pem /etc/apk/keys/` + feed + `.pem
+echo "` + repo + `" > /etc/apk/repositories.d/` + feed + `.list
+
+apk update
+apk add ` + strings.Join(pkgs, " ") + `
+
+# Every installed package must own the files it claims to.
+for p in ` + strings.Join(pkgs, " ") + `; do
+	apk info -L "$p" >/dev/null || { echo "no file list for $p" >&2; exit 1; }
+done
+
+# A trusted per-package signature is what makes this work without a flag, and it is
+# the only way LuCI's Upload Package flow can work at all: package-manager-call
+# drops arguments it does not recognise, so it cannot pass --allow-untrusted.
+apk del ` + first + ` >/dev/null 2>&1 || true
+file=$(ls /feed/` + expandLayout(layout, release, arch) + `/` + first + `-*.apk | head -1)
+if apk add "$file" >/dev/null 2>&1; then echo "` + markerLocal + `"; fi
+echo "` + markerPin + `$(grep '^` + first + `' /etc/apk/world || true)"
+
+echo "` + markerDone + `"
+`
+}
+
+func expandLayout(path, release, arch string) string {
+	if path == "" {
+		path = "releases/{release}/{arch}"
+	}
+	path = strings.ReplaceAll(path, "{release}", release)
+	return strings.ReplaceAll(path, "{arch}", arch)
+}
+
+// indexPackages reads the names the index advertises, so the check installs what
+// the feed actually offers rather than what someone remembered to list.
+func indexPackages(dir string) ([]string, error) {
+	b, err := os.ReadFile(filepath.Join(dir, "index.json"))
+	if err != nil {
+		return nil, err
+	}
+	var doc struct {
+		Packages []struct {
+			Name string `json:"name"`
+		} `json:"packages"`
+	}
+	if err := json.Unmarshal(b, &doc); err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, p := range doc.Packages {
+		out = append(out, p.Name)
+	}
+	return out, nil
+}

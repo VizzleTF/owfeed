@@ -121,6 +121,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = a.installSnippet(cmdArgs)
 	case "publish":
 		err = a.publish(ctx, cmdArgs)
+	case "smoke":
+		err = a.smoke(ctx, cmdArgs)
 	case "help", "-h", "--help":
 		usage(stdout)
 		return exitOK
@@ -188,6 +190,7 @@ Commands:
   index       fan out the signed packages and build a signed index per architecture
   doctor      check the built tree against everything that has burned a feed before
   publish     gate the tree on those checks and hand it to the target
+  smoke       install the built feed on a real OpenWrt image
   install-snippet  print the instructions your subscribers follow
   version     print the version
 
