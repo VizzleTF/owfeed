@@ -74,6 +74,23 @@ type Layout struct {
 
 const DefaultLayoutPath = "releases/{release}/{arch}"
 
+// ExpandLayout fills in the layout template. Every part of owfeed that names a
+// published path goes through this, so the directory the index is written to, the
+// URL the snippet documents and the path a check fetches cannot drift apart.
+func ExpandLayout(path, release, arch string) string {
+	if path == "" {
+		path = DefaultLayoutPath
+	}
+	path = strings.ReplaceAll(path, "{release}", release)
+	return strings.ReplaceAll(path, "{arch}", arch)
+}
+
+// LayoutPath is the directory one (release, arch) publishes into, relative to the
+// feed root.
+func (c *Config) LayoutPath(release, arch string) string {
+	return ExpandLayout(c.Layout.Path, release, arch)
+}
+
 // Release is one OpenWrt release line.
 type Release struct {
 	// Line is a major.minor line such as "25.12", or "snapshot".

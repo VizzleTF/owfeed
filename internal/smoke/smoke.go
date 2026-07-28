@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/VizzleTF/owfeed/internal/config"
 	"github.com/VizzleTF/owfeed/internal/feedindex"
 )
 
@@ -291,9 +292,5 @@ echo "` + markerDone + `"
 }
 
 func expandLayout(path, release, arch string) string {
-	if path == "" {
-		path = "releases/{release}/{arch}"
-	}
-	path = strings.ReplaceAll(path, "{release}", release)
-	return strings.ReplaceAll(path, "{arch}", arch)
+	return config.ExpandLayout(path, release, arch)
 }

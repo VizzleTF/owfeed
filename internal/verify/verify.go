@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/VizzleTF/owfeed/internal/config"
 	"github.com/VizzleTF/owfeed/internal/feedindex"
 )
 
@@ -342,9 +343,5 @@ func get(ctx context.Context, hc *http.Client, url string) ([]byte, int, error) 
 }
 
 func expandLayout(path, release, arch string) string {
-	if path == "" {
-		path = "releases/{release}/{arch}"
-	}
-	path = strings.ReplaceAll(path, "{release}", release)
-	return strings.ReplaceAll(path, "{arch}", arch)
+	return config.ExpandLayout(path, release, arch)
 }

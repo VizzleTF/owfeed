@@ -332,6 +332,22 @@ func checkOrigin(r *Report, in Input) {
 	}
 }
 
+// publishesTo reports whether a package belongs in one architecture's index. A
+// noarch package is fanned out to all of them; one that lists architectures goes to
+// the ones it lists, and an empty list means the package is built for whatever the
+// release line has.
+func publishesTo(p config.Package, arch string) bool {
+	if len(p.Arch.List) == 0 || p.Arch.IsNoarch() {
+		return true
+	}
+	for _, a := range p.Arch.List {
+		if a == arch {
+			return true
+		}
+	}
+	return false
+}
+
 // indexEntry is one package as the index describes it.
 type indexEntry struct {
 	Name     string `json:"name"`
@@ -363,7 +379,75 @@ func checkTree(ctx context.Context, r *Report, in Input) error {
 			return err
 		}
 	}
+
+	checkCoverage(r, in)
 	return nil
+}
+
+// 406: everything the config publishes has to be in the tree.
+//
+// Every other check reads the tree and asks whether what is there is correct. None
+// of them can see a package that is not there at all, so a build that half-failed —
+// a fetch that died, a step that was skipped — produces a tree that passes cleanly
+// and a feed that is missing packages. This happened: a tree carrying one of three
+// packages on its 24.10 line passed 610 checks and was ready to publish.
+//
+// The config is the statement of intent, so it is the only thing that knows what
+// absence looks like.
+func checkCoverage(r *Report, in Input) {
+	for _, rel := range in.Lock.Releases {
+		for _, arch := range rel.Arches {
+			// A package built from prebuilt binaries exists only for the
+			// architectures its author published, and naming them in `arch:` is how
+			// the config says so. Absence there is a decision, not a failure.
+			var want []string
+			for _, p := range in.Config.Packages {
+				if p.PublishedOn(rel.Line) && publishesTo(p, arch) {
+					want = append(want, p.EffectiveName())
+				}
+			}
+			if len(want) == 0 {
+				continue
+			}
+
+			r.Checked++
+			where := in.Config.LayoutPath(rel.Line, arch)
+			dir := filepath.Join(in.OutDir, filepath.FromSlash(where))
+
+			idx, err := feedindex.ReadDir(dir)
+			if err != nil {
+				r.add(Finding{
+					ID: "OWF406", Severity: Error, Where: where,
+					What: fmt.Sprintf("the config publishes %d package(s) here and there is no index: %v", len(want), err),
+					Why:  "subscribers point at exactly this path, so a missing directory is a feed that 404s for every router on that architecture",
+					Fix:  "re-run `owfeed build` and `owfeed index`, and check the build log for a step that failed without stopping",
+				})
+				continue
+			}
+
+			have := map[string]bool{}
+			for _, e := range idx.Entries {
+				have[e.Name] = true
+			}
+			var missing []string
+			for _, name := range want {
+				if !have[name] {
+					missing = append(missing, name)
+				}
+			}
+			if len(missing) == 0 {
+				continue
+			}
+			sort.Strings(missing)
+			r.add(Finding{
+				ID: "OWF406", Severity: Error, Where: where,
+				What: "the config publishes packages this index does not carry: " + strings.Join(missing, ", "),
+				Why: "no other check can see a package that is absent, so a build that half-failed publishes a tree " +
+					"that passes everything and is missing packages",
+				Fix: "check the build log for a step that failed without stopping the run, then rebuild and re-index",
+			})
+		}
+	}
 }
 
 func checkIndexDir(ctx context.Context, r *Report, in Input, dir string, arches map[string]bool) error {

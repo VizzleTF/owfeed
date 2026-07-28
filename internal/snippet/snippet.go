@@ -157,6 +157,5 @@ func resolve(in Input) (release, pkg string) {
 }
 
 func expand(layout, release, arch string) string {
-	layout = strings.ReplaceAll(layout, "{release}", release)
-	return strings.ReplaceAll(layout, "{arch}", arch)
+	return config.ExpandLayout(layout, release, arch)
 }

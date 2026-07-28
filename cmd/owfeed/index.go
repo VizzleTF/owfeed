@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/VizzleTF/owfeed/internal/config"
 	"github.com/VizzleTF/owfeed/internal/index"
@@ -168,11 +167,9 @@ func (a *app) index(ctx context.Context, args []string) error {
 	return nil
 }
 
-// expandLayout fills in the layout template from owfeed.yml.
+// expandLayout fills in the layout template from owfeed.yml, as a host path.
 func expandLayout(path, release, arch string) string {
-	path = strings.ReplaceAll(path, "{release}", release)
-	path = strings.ReplaceAll(path, "{arch}", arch)
-	return filepath.FromSlash(path)
+	return filepath.FromSlash(config.ExpandLayout(path, release, arch))
 }
 
 func copyFile(src, dst string) error {
