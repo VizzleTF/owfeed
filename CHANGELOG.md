@@ -2,6 +2,32 @@
 
 Dates are when the tag was cut. Anything not listed is documentation or tests.
 
+## Unreleased
+
+- `owfeed releases` reports what the download server publishes per line and which
+  package format that line takes. It exists to be compared against: owlab answers
+  the same question from the same server and neither reads the other, which is
+  deliberate, but until now owfeed had no way to state its answer outside a feed
+  repository — `arch.LatestPoint` is internal and `owfeed lock` needs a config.
+  Duplication that nothing can observe is just drift with a delay.
+- A nightly cross-check against `owlab releases --all --json`, which files an
+  issue when the two disagree about a newest point release or about apk vs opkg.
+  One open issue, not one per night.
+- `feed.yml` takes `dry-run: true` and runs the whole pipeline against throwaway
+  keys without an environment and without publishing, so a feed's pull-request
+  check and its publication are one workflow in two modes. Two hand-written
+  pipelines mean a green pull request proves nothing about the one that publishes;
+  the divergence between them was exactly what nothing tested.
+- `feed.yml` reports `digest` (sha256 over the published tree), `published` and
+  `page-url`, so a caller can do something after publication rather than guess.
+- `feed.yml`'s publish job reads `OWFEED_SIGN_KEY` and `OWFEED_USIGN_KEY` from the
+  environment it declares, falling back to the `sign-key` / `usign-key` inputs.
+  Taking them only as `workflow_call` secrets meant the calling workflow had to
+  read them, and a calling job has no environment — so the workflow whose purpose
+  is keeping a signing key inside a protected environment was forcing every feed
+  that adopted it to hold that key at repository scope instead. Existing callers
+  are unaffected: the input still wins when no environment secret is set.
+
 ## v0.1.5 — 2026-07-28
 
 - `owfeed sign` no longer requires a feed config. It takes `--key`, and resolves the
