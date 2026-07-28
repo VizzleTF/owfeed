@@ -201,9 +201,15 @@ Five of them. Each is a file or a CLI surface; none is a shared Go package.
 |---|---|---|---|
 | artifact tree | [artifact-contract.md](artifact-contract.md) | `owlab build`, `owfeed build`, any SDK invocation | `owfeed sign`, `owfeed release`, `owfeed index`, feed ingest |
 | release manifest | [manifest-format.md](manifest-format.md) | `owfeed release` | `owfeed verify-artifact`, feed ingest |
-| test report | `owlab.test/v1` (owlab) | `owlab test --json`, `owlab/action` | a feed's consumer gate |
+| test report | `owlab.test/v1` (owlab) | `owlab test --json`, `owlab/action` | an author's CI today; a feed-side consumer gate once it exists |
 | keys | below | — | — |
 | config | below | — | — |
+
+The report contract is the one with a consumer still missing. An author's CI already fails
+on it, but the feed-side use — install from the freshly built index and assert the page
+renders — needs `owlab` to install from a feed rather than a file, and neither `owlab
+install --feed` nor a `feed:` input on `owlab/action` exists yet. Until then `owfeed smoke`
+proves the channel works and nothing proves what arrived through it.
 
 ### Keys
 
@@ -242,6 +248,14 @@ policy change in as a router addition. Beyond that, owfeed's validator rejects u
 blocks by design; permitting an `owlab:` section means whitelisting it, which is coupling
 the schemas.
 
+**One exception today, and it is a defect rather than a design.** `owfeed release` needs no
+config, but `owfeed sign` loads one — it reads the signing key from it, and the lockfile
+beside it to decide which SDK to take the apk tool from. So an author who wants the
+in-package signature must currently write a feed config and a 36-architecture lockfile to
+sign one file in `dist/noarch/`. That is why the rule above says "should" in practice: it
+holds for `owfeed release` and not yet for `owfeed sign`. Closing it means giving `sign` a
+`--key` flag and a default SDK release when no config is present.
+
 ## CI/CD composition
 
 Four roles, each a composition of the pieces above.
@@ -257,21 +271,33 @@ values contributed by pull request. Signing, indexing and the publish gate run i
 separate job bound to the `feed` environment. `owfeed publish` refuses on error-level
 findings and has no override flag; the upload itself is `actions/deploy-pages`.
 
-**Third-party maintainer.** The funnel is: a request issue → an automated intake check that
-runs `owfeed verify-artifact` against the claimed release *before* a person looks → human
-review of the key addition, enforced by CODEOWNERS → one PR adding `upstream.sh` and the
-public key → a scheduled bot for updates after that. The key from the issue proves the
-release is internally coherent; it is not trust. Trust happens exactly once, when the key
-is committed.
+**Third-party maintainer.** The intended funnel is: a request issue → an automated intake
+check that runs `owfeed verify-artifact` against the claimed release *before* a person
+looks → human review of the key addition, enforced by CODEOWNERS → one PR adding
+`upstream.sh` and the public key → a scheduled bot for updates after that. The key from the
+issue proves the release is internally coherent; it is not trust. Trust happens exactly
+once, when the key is committed.
+
+Of that, the last two steps exist. There is no request template and no intake workflow yet,
+so a third party today reads CONTRIBUTING and opens a pull request by hand. `CODEOWNERS`
+names `keys/` but is not enforced: a review requirement needs a reviewer, and with one
+maintainer the author of a pull request cannot approve it — so the branch rule would block
+every key addition permanently rather than gate it. It becomes a mechanism on the day there
+is a second maintainer.
 
 Conformance tiers follow from **what the signature covers**, not from how hard the author
 tried:
 
 | Tier | What the author publishes | What the signature covers | Automated updates |
 |---|---|---|---|
-| **A** | `owfeed release` — a signed `owfeed-manifest 1` | the whole inventory: sizes, hashes, repo, tag | yes, with a daily ceiling |
-| **B** | finished artifacts, each with a detached signature | each asset, but not the list of them | yes, only while the file and architecture set is unchanged |
+| **A** | `owfeed release` — a signed `owfeed-manifest 1` | the whole inventory: sizes, hashes, repo, tag | yes |
+| **B** | finished artifacts, each with a detached signature | each asset, but not the list of them | yes, while the set of containers is unchanged |
 | **C** | unsigned binaries the feed packages itself | nothing but "it downloaded intact" | never |
+
+Where an update is automatic it is still refused on a major version bump, on a diff
+touching anything but the pins, and on the third update to one package inside a day —
+the risk being a run of releases rather than one, since a stolen key signs each of them
+perfectly and publishes faster than anyone reads the notifications.
 
 **Consumer.** The feed is the default path. An author's own release channel remains valid
 for routers that cannot add a repository, but the two must not be mixed on one router: on
