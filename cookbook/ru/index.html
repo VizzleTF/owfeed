@@ -159,9 +159,9 @@ jobs:
       matrix: { release: ["25.12.5", "24.10.8"] }
     steps:
       - uses: actions/checkout@v5
-      - uses: VizzleTF/owlab/setup@v0.2.0
+      - uses: VizzleTF/owlab/setup@v0.3.0
       - run: owlab build --release ${{ matrix.release }}
-      - uses: VizzleTF/owlab/action@v0.2.0
+      - uses: VizzleTF/owlab/action@v0.3.0
         with:
           releases: ${{ matrix.release }}
           install: dist/*/my-app-*
@@ -182,7 +182,7 @@ jobs:
     permissions: { contents: write }
     steps:
       - uses: actions/checkout@v5
-      - uses: VizzleTF/owlab/setup@v0.2.0
+      - uses: VizzleTF/owlab/setup@v0.3.0
       - uses: VizzleTF/owfeed/setup@v0.1.5
 
       - run: owlab build --release 25.12.5
@@ -254,6 +254,16 @@ release:
 <div class="note"><strong>Почему манифест важен.</strong> Есть манифест — обновления приезжают
 без человека. Нет, только файлы — каждое обновление ждёт человека, потому что подпись на файлах
 не говорит, какие файлы входят в релиз.</div>
+
+<h3>Проверить, что ставится из фида, а не только из файла</h3>
+<p>Когда пакет уже в фиде, эту проверку стоит завести. Установка файла доказывает, что работает
+пакет; установка <strong>по имени</strong> из подписанного индекса доказывает, что работает канал:
+индекс читается, URL не редиректит, ключ совпадает:</p>
+<pre>owlab test --release 25.12.5 \
+  --feed 'https://vizzletf.github.io/owfeed-packages/releases/25.12/x86_64/packages.adb' \
+  --feed-key ./owfeed-packages.pem \
+  --install my-app \
+  --assert 'http 200 /cgi-bin/luci/admin/services/mine'</pre>
 
 <h2>6. Уже есть пакет на 24.10? Добавьте 25.12</h2>
 <p>Типичный случай: <code>.ipk</code>, который годами работает, и пользователи на 25.12,
