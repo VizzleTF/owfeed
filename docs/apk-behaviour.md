@@ -541,3 +541,36 @@ opkg_conf_load: Could not create lock file /var/lock/opkg.lock: No such file or 
 ```
 
 The rootfs images ship without it.
+
+## All four lifecycle scripts run, and only two have a `default_` helper
+
+Measured in `openwrt/rootfs:x86-64-24.10.8` with a package whose `preinst`, `postinst`,
+`prerm` and `postrm` each appended their arguments to a file:
+
+| operation | scripts, in order |
+|---|---|
+| install | `preinst install`, `postinst configure` |
+| upgrade | `prerm remove`, `postrm remove`, `preinst install`, `postinst configure` |
+| remove | `prerm remove`, `postrm remove` |
+
+Two consequences, both of which owfeed got wrong at first.
+
+**A package that ships only `postinst` and `prerm` loses its cleanup on removal.** That is
+the pair OpenWrt's own `package-pack.mk` generates, so it is easy to assume it is the whole
+set — but `postrm` is where a package undoes what it did, and opkg runs it. owfeed emitted
+neither `postrm` nor `preinst` until this was measured; the apk side had carried
+`post-deinstall` all along, so the same package cleaned up on 25.12 and did not on 24.10.
+
+**There is no `default_postrm`.** `/lib/functions.sh` on 24.10 defines exactly two:
+
+```
+default_postinst
+default_prerm
+```
+
+So `postrm` and `preinst` carry the author's body and nothing else. Sourcing
+`functions.sh` to call a helper that does not exist would fail on every removal.
+
+**opkg has no upgrade hook.** An upgrade is a removal followed by an install, which is why
+`prerm`/`postrm` appear in the upgrade row. apk's `pre-upgrade` and `post-upgrade` have no
+counterpart, so owfeed says so at build time rather than dropping them silently.

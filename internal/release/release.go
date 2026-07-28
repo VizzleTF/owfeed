@@ -31,6 +31,11 @@ const ManifestName = "manifest.txt"
 // know rather than misread one.
 const Format = "owfeed-manifest 1"
 
+// NotesName is the release notes file, when there is one. Its digest goes in the
+// manifest for the same reason the packages' do: a confirmation dialog that shows
+// the user release notes nobody verified is showing them attacker-controlled text.
+const NotesName = "notes.md"
+
 // Options configure a release.
 type Options struct {
 	// Dir holds the packages, laid out as `owfeed build` leaves them.
@@ -78,8 +83,21 @@ func Build(opts Options) (*Result, error) {
 	fmt.Fprintf(&b, "tag %s\n", opts.Tag)
 	fmt.Fprintf(&b, "version %s\n", strings.TrimPrefix(opts.Tag, "v"))
 	fmt.Fprintf(&b, "date %s\n", now.UTC().Format(time.RFC3339))
+	// Release notes, when the caller left some beside the packages.
+	notes := filepath.Join(opts.Dir, NotesName)
+	if sum, err := sha256File(notes); err == nil {
+		fmt.Fprintf(&b, "notes %s %s\n", sum, NotesName)
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	// Field order is not free. Readers already in the field parse this positionally
+	// -- `$1=="pkg" && $2==name && $3==ext {print $4, $5, $6}` is what a router that
+	// installed an earlier release is running, and it cannot be fixed remotely. So
+	// the first six fields are the shape those readers expect, and the architecture,
+	// which they never had, goes after them where it costs nothing.
 	for _, p := range pkgs {
-		fmt.Fprintf(&b, "pkg %s %s %s %s %d %s\n", p.name, p.format, p.arch, p.file, p.size, p.sum)
+		fmt.Fprintf(&b, "pkg %s %s %s %d %s %s\n", p.name, p.format, p.file, p.size, p.sum, p.arch)
 	}
 
 	manifest := filepath.Join(opts.Dir, ManifestName)

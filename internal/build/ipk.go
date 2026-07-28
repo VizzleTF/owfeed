@@ -61,6 +61,15 @@ func buildIPK(req Request, arch, root string) (*Result, error) {
 	}
 
 	notes := []string{"built for the 24.10 line, which is opkg rather than apk"}
+	// opkg has no upgrade hook: it removes the old version and installs the new one,
+	// so an upgrade is prerm + postrm followed by preinst + postinst. A package
+	// relying on an upgrade script gets those instead, and saying so is better than
+	// dropping the script without a word.
+	for _, kind := range []string{"pre-upgrade", "post-upgrade"} {
+		if _, ok := p.Scripts[kind]; ok {
+			notes = append(notes, kind+" has no opkg equivalent; an upgrade runs prerm, postrm, preinst, postinst instead")
+		}
+	}
 	if len(catalogues) > 0 {
 		notes = append(notes, fmt.Sprintf("compiled %d translation catalogue(s)", len(catalogues)))
 	}
@@ -71,6 +80,18 @@ func buildIPK(req Request, arch, root string) (*Result, error) {
 // wrapper is the same idea as the apk one and a different name: opkg calls them
 // postinst and prerm, and default_postinst is what runs a package's uci-defaults
 // and enables its init scripts.
+//
+// What opkg 24.10 actually runs, measured in openwrt/rootfs:x86-64-24.10.8 with a
+// package whose four scripts each logged their arguments:
+//
+//	install    preinst install    postinst configure
+//	upgrade    prerm remove       postrm remove      preinst install   postinst configure
+//	remove     prerm remove       postrm remove
+//
+// Two things follow. Every one of the four runs, so a package that ships only
+// postinst and prerm loses its cleanup on removal — which is what happened here.
+// And /lib/functions.sh defines only default_postinst and default_prerm: there is no
+// default_postrm to call, so postrm carries the author's body and nothing else.
 func ipkScripts(name string, p config.Package, root string) map[string]string {
 	body := func(kind string) string {
 		path, ok := p.Scripts[kind]
@@ -84,7 +105,7 @@ func ipkScripts(name string, p config.Package, root string) map[string]string {
 		return stripShebang(string(b))
 	}
 
-	return map[string]string{
+	s := map[string]string{
 		"postinst": strings.Join([]string{
 			"#!/bin/sh",
 			`[ "${IPKG_NO_SCRIPT}" = "1" ] && exit 0`,
@@ -101,4 +122,15 @@ func ipkScripts(name string, p config.Package, root string) map[string]string {
 			body("pre-deinstall"),
 		}, "\n"),
 	}
+
+	// postinst and prerm exist unconditionally because their default_ wrappers do
+	// real work on every package. These two have no default to run, so an empty one
+	// would be a file opkg executes for nothing.
+	if b := body("post-deinstall"); b != "" {
+		s["postrm"] = "#!/bin/sh\n" + b
+	}
+	if b := body("pre-install"); b != "" {
+		s["preinst"] = "#!/bin/sh\n" + b
+	}
+	return s
 }
