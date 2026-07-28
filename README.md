@@ -243,7 +243,8 @@ walks through both sides.
 
 - [Examples](docs/examples.md) — a LuCI theme, a two-package feed, a compiled binary.
   *([Русский](docs/examples_ru.md))*
-- [Verified apk behaviour](docs/apk-behaviour.md) — what apk actually does, with reproductions.
+- [Verified package manager behaviour](docs/apk-behaviour.md) — what apk and opkg actually do, with
+  reproductions.
 - [Design](docs/DESIGN.md) — the full design and the research behind it *(Russian)*.
 
 ## License

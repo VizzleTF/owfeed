@@ -1,7 +1,10 @@
-# Verified apk-tools behaviour
+# Verified package manager behaviour
 
 Facts established by running the real thing, not by reading documentation. Every claim
 here has a reproduction below it. Anything not reproduced is not in this file.
+
+Most of it is apk, which 25.12 and later use. [opkg, 24.10 and earlier](#opkg-2410-and-earlier)
+is at the end, where nearly every detail is different.
 
 **Environment:** apk-tools 3.0.5 extracted from `openwrt-sdk-25.12.5-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst`,
 run under `linux/amd64`. Date: 2026-07-27.
@@ -438,3 +441,103 @@ key id in it. The trusted set of key ids and their hashes has to be pinned indep
 
 `internal/usign` verifies this natively, so no C toolchain is on the path; the test in
 that package verifies a real 25.12.5 release artifact.
+
+---
+
+# opkg, 24.10 and earlier
+
+A different package manager, and the differences are the kind that produce a feed
+which looks correct and works on nobody's router.
+
+**Environment:** `openwrt/rootfs:x86-64-24.10.8`, and OpenWrt's own published
+24.10.8 feed for the comparisons. Date: 2026-07-28.
+
+## The index signature covers the uncompressed `Packages`
+
+opkg downloads `Packages.gz`. The signature beside it is over `Packages`. Signing
+the compressed copy produces a feed every router rejects, and nothing about the
+filenames hints at which one is meant.
+
+Checked against OpenWrt's own feed rather than assumed:
+
+```sh
+B=https://downloads.openwrt.org/releases/24.10.8/packages/x86_64/base
+curl -sfS "$B/Packages" -o P; curl -sfS "$B/Packages.sig" -o P.sig; curl -sfS "$B/Packages.gz" -o P.gz
+usign -V -m P    -p k24.pub -x P.sig   # OK
+usign -V -m P.gz -p k24.pub -x P.sig   # fails
+```
+
+They are two separate files, so a publisher who regenerates one without the other
+serves a feed whose signature is valid and whose contents are stale.
+
+## The key's filename is its id
+
+```sh
+$ ls /etc/opkg/keys/
+d310c6f2833e97f7
+$ head -1 /etc/opkg/keys/d310c6f2833e97f7
+untrusted comment: Public usign key for 24.10 release builds
+```
+
+opkg looks a key up by that name. apk is the opposite: it matches on the identity
+inside the signature and ignores the filename entirely. The same public key
+published under the wrong name breaks one manager or the other.
+
+## The repository line names a directory
+
+```
+src/gz openwrt_base https://downloads.openwrt.org/releases/24.10.8/packages/x86_64/base
+```
+
+opkg appends `/Packages.gz` itself. apk's `ndx` line names the index *file*. Each
+form is wrong for the other.
+
+## Signature checking is on by default, and refusing is the default outcome
+
+The stock `/etc/opkg.conf` carries `option check_signature`. Without the key
+installed:
+
+```
+Updated list of available packages in /var/opkg-lists/dualfeed
+Signature check failed.
+Remove wrong Signature file.
+ * opkg_install_cmd: Cannot install package luci-app-demo.
+```
+
+## Packages carry no signature at all
+
+There is no per-package signature in the ipk container, and no equivalent of apk's
+`adbsign`. opkg's trust rests entirely on the signed index, which is why the index
+signature is the only thing worth checking there — and why the apk-side claim about
+`apk add ./file.apk` has no counterpart.
+
+One consequence in owfeed's favour: an unchanged ipk rebuilds byte for byte, where
+an apk gets a fresh randomised ECDSA signature every time it is signed.
+
+## The container is a gzipped tar, not an ar archive
+
+From `scripts/ipkg-build` on the openwrt-24.10 branch:
+
+```
+<name>_<version>_<arch>.ipk = gzip(tar of ./debian-binary, ./data.tar.gz, ./control.tar.gz)
+```
+
+in that order, GNU format, numeric owner, sorted by name, fixed mtime.
+`Installed-Size` in the control file is the *uncompressed* size of `data.tar.gz`.
+
+## `all`, never `noarch`
+
+opkg calls an architecture-independent package `all`. apk rejects `all` as
+uninstallable and requires `noarch`. The same package therefore carries a different
+architecture name in each of its two artifacts, which is what OpenWrt's own
+`package-pack.mk` translates when it builds for apk.
+
+## `opkg` needs `/var/lock` to exist
+
+Not a format detail, but it costs an afternoon if you meet it in a container:
+
+```
+opkg_conf_load: Could not create lock file /var/lock/opkg.lock: No such file or directory
+```
+
+The rootfs images ship without it.
