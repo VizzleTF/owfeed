@@ -146,22 +146,24 @@ func parseListing(body string) ([]string, error) {
 	return out, nil
 }
 
-// LatestPoint resolves a release line such as "25.12" to its newest point release.
+// Versions is every release the download server lists, release candidates
+// included — filtering is the caller's business, because "what exists" and "what
+// a feed may pin to" are different questions.
 //
-// Release candidates are never returned: a feed pinned to an -rc is pinned to
-// something that will stop existing.
-func LatestPoint(ctx context.Context, hc *http.Client, line string) (string, error) {
+// Separate from LatestPoint so that a caller asking about several lines pays for
+// one request rather than one per line.
+func Versions(ctx context.Context, hc *http.Client) ([]string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, VersionsURL, nil)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	resp, err := hc.Do(req)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GET %s: %s", VersionsURL, resp.Status)
+		return nil, fmt.Errorf("GET %s: %s", VersionsURL, resp.Status)
 	}
 
 	var versions struct {
@@ -169,9 +171,26 @@ func LatestPoint(ctx context.Context, hc *http.Client, line string) (string, err
 		List   []string `json:"versions_list"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&versions); err != nil {
-		return "", fmt.Errorf("%s: %w", VersionsURL, err)
+		return nil, fmt.Errorf("%s: %w", VersionsURL, err)
 	}
-	return pickLatest(line, versions.List)
+	return versions.List, nil
+}
+
+// LatestPoint resolves a release line such as "25.12" to its newest point release.
+//
+// Release candidates are never returned: a feed pinned to an -rc is pinned to
+// something that will stop existing.
+func LatestPoint(ctx context.Context, hc *http.Client, line string) (string, error) {
+	list, err := Versions(ctx, hc)
+	if err != nil {
+		return "", err
+	}
+	return pickLatest(line, list)
+}
+
+// LatestPointIn answers the same question against a list already fetched.
+func LatestPointIn(line string, published []string) (string, error) {
+	return pickLatest(line, published)
 }
 
 func pickLatest(line string, list []string) (string, error) {
