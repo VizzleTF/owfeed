@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      # Build provenance is what makes `owfeed/setup` a verified download rather
+      # than a hopeful one. A checksum file served from the same release by the same
+      # host is not a check -- whoever can replace the binary can replace the
+      # checksum beside it. An attestation is signed by GitHub's own identity and
+      # recorded in a public transparency log, so it is evidence from somewhere the
+      # release host does not control.
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Never publish a binary the tests have not passed on. The tag is what
+      # consumers pin, so this is the last point at which it costs nothing.
+      - run: go test ./...
+
+      - name: Build
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          set -eu
+          mkdir -p dist
+          version="${GITHUB_REF_NAME}"
+          # Reproducibility: the same tag rebuilt has to give the same bytes, or the
+          # digest a consumer pinned means nothing.
+          export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            os="${target%/*}"; arch="${target#*/}"
+            GOOS="$os" GOARCH="$arch" go build \
+              -trimpath \
+              -ldflags "-s -w -X main.version=${version#v}" \
+              -o "dist/owfeed-${os}-${arch}" ./cmd/owfeed
+          done
+          cd dist && sha256sum owfeed-* > SHA256SUMS
+          cat SHA256SUMS
+
+      # Every binary is attested individually, because that is what setup verifies:
+      # it downloads exactly one file and has to be able to check that one file.
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/owfeed-*
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes

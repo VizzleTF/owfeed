@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - run: go vet ./...
+      - run: go build ./...
+
+      # The integration tests reach for a real apk and real container images. They
+      # are the ones that catch what unit tests cannot -- that the SDK's apk cannot
+      # emit zstd, that a router accepts what was built -- so they run here rather
+      # than being something only a maintainer remembers to do.
+      - run: go test ./...
+
+      - name: gofmt
+        run: |
+          out=$(gofmt -l .)
+          [ -z "$out" ] || { echo "not gofmt'd:"; echo "$out"; exit 1; }

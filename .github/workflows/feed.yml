@@ -1,0 +1,187 @@
+name: owfeed feed
+
+# A reusable workflow for publishing a feed to GitHub Pages.
+#
+# The composite action in setup/ installs the tool; this installs the SHAPE, and
+# the shape is the part that is easy to get wrong. What it enforces:
+#
+#   - The build job never sees the signing key. Building runs whatever a feed's own
+#     scripts do, and for a feed that carries other people's packages those scripts
+#     came out of a pull request. The key appears only after the built bytes are
+#     already in an artifact.
+#   - Publishing is gated on `owfeed publish`, which refuses an unsigned or unchecked
+#     tree and has no flag to say otherwise. Every hand-written feed workflow in the
+#     wild ends in an unconditional upload of whatever the build step left behind.
+#   - The publish job runs in an environment, so approval and secret scoping are the
+#     repository's to configure rather than something each feed reinvents.
+#
+# Usage:
+#
+#   jobs:
+#     publish:
+#       uses: VizzleTF/owfeed/.github/workflows/feed.yml@v1
+#       with:
+#         owfeed-version: v1.0.0
+#         pre-build: for d in packages/*/; do ./tools/fetch.sh "$d"; done
+#         post-index: ./tools/check-tree.sh
+#         smoke-releases: "25.12 24.10"
+#       secrets:
+#         sign-key: ${{ secrets.OWFEED_SIGN_KEY }}
+#         usign-key: ${{ secrets.OWFEED_USIGN_KEY }}
+
+on:
+  workflow_call:
+    inputs:
+      owfeed-version:
+        description: owfeed release tag to install. Pin it.
+        required: true
+        type: string
+      environment:
+        description: >-
+          Environment the publish job runs in. Give it required reviewers and scope
+          the signing secrets to it; that is what keeps the key out of reach of
+          anything that has not been looked at.
+        required: false
+        type: string
+        default: feed
+      pre-build:
+        description: >-
+          Shell run before `owfeed build`, in the job that has no key. Fetching
+          upstream artifacts belongs here.
+        required: false
+        type: string
+        default: ""
+      post-index:
+        description: Shell run after `owfeed index` and before the checks.
+        required: false
+        type: string
+        default: ""
+      smoke-releases:
+        description: >-
+          Space-separated release lines to install on a real OpenWrt image before
+          publishing. Empty skips it, which means publishing a feed nothing has
+          tried to install from.
+        required: false
+        type: string
+        default: ""
+      source-date-epoch:
+        description: >-
+          Fixed build timestamp. A package's identity is a hash over its payload and
+          mkpkg records mtimes, so without this every rebuild republishes
+          byte-identical content under a new identity and invalidates every cached
+          copy. A constant, not a timestamp: identity should depend on what a package
+          contains and nothing else.
+        required: false
+        type: string
+        default: "1700000000"
+      runs-on:
+        required: false
+        type: string
+        default: ubuntu-latest
+    secrets:
+      sign-key:
+        description: EC prime256v1 SEC1 PEM. Signs apk packages and indexes.
+        required: false
+      usign-key:
+        description: usign secret key. Signs opkg indexes; required for a 24.10 line.
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: owfeed-publish-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  # Runs the feed's own scripts. No key, deliberately.
+  build:
+    runs-on: ${{ inputs.runs-on }}
+    env:
+      SOURCE_DATE_EPOCH: ${{ inputs.source-date-epoch }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: VizzleTF/owfeed/setup@v1
+        with:
+          version: ${{ inputs.owfeed-version }}
+
+      # Through env, never interpolated into `run:` directly. A caller that passes
+      # an issue title or a branch name into this input would otherwise be handing
+      # whoever wrote it a shell in the job that builds the feed.
+      - if: inputs.pre-build != ''
+        env:
+          SCRIPT: ${{ inputs.pre-build }}
+        run: bash -euo pipefail -c "$SCRIPT"
+
+      # --frozen-lock: a new architecture appearing upstream is a diff someone
+      # approves, never a silent change to what this feed publishes.
+      - run: owfeed --frozen-lock build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: owfeed-packages
+          path: dist/
+          retention-days: 1
+
+  publish:
+    needs: build
+    runs-on: ${{ inputs.runs-on }}
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    env:
+      SOURCE_DATE_EPOCH: ${{ inputs.source-date-epoch }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: VizzleTF/owfeed/setup@v1
+        with:
+          version: ${{ inputs.owfeed-version }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: owfeed-packages
+          path: dist/
+
+      - name: Sign and index
+        env:
+          OWFEED_SIGN_KEY: ${{ secrets.sign-key }}
+          OWFEED_USIGN_KEY: ${{ secrets.usign-key }}
+        run: |
+          owfeed sign
+          owfeed index
+
+      - if: inputs.post-index != ''
+        env:
+          SCRIPT: ${{ inputs.post-index }}
+        run: bash -euo pipefail -c "$SCRIPT"
+
+      - name: Install it on a real image
+        if: inputs.smoke-releases != ''
+        env:
+          LINES: ${{ inputs.smoke-releases }}
+        run: |
+          for line in $LINES; do
+            owfeed smoke --release "$line"
+          done
+
+      # What is about to go out, compared against what is already live, before it
+      # replaces it. A version republished with different contents is invisible from
+      # inside the tree, which is self-consistent either way. Not fatal: a feed
+      # publishing for the first time has nothing to compare against.
+      - name: Compare against what is live
+        continue-on-error: true
+        run: owfeed verify out
+
+      # The gate. Refuses an unsigned or unchecked tree, and there is no flag.
+      - name: Check and publish
+        env:
+          OWFEED_SIGN_KEY: ${{ secrets.sign-key }}
+          OWFEED_USIGN_KEY: ${{ secrets.usign-key }}
+        run: owfeed publish
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
+      - uses: actions/deploy-pages@v4

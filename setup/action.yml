@@ -1,0 +1,88 @@
+name: Set up owfeed
+description: Install a verified owfeed binary and put it on PATH.
+
+# Why this exists rather than `go install github.com/VizzleTF/owfeed/cmd/owfeed@sha`:
+# that compiles the tool on every job of a 35-architecture matrix, needs a Go
+# toolchain the feed itself has no use for, and verifies nothing -- `go install`
+# trusts whatever the module proxy returns for that revision. This downloads one
+# binary and checks it against GitHub's own build attestation before running it.
+
+inputs:
+  version:
+    description: >-
+      Release tag to install, such as v0.1.0, or "latest". Pin a tag: "latest"
+      means the tool that signs your feed can change under you between runs.
+    required: false
+    default: latest
+  verify:
+    description: >-
+      Verify the download against its build attestation. Turning this off means
+      running an unverified binary with your signing key in the same job; there is
+      no supported reason to, and it exists only so a broken Sigstore does not
+      leave you with no way to publish an urgent fix.
+    required: false
+    default: "true"
+  token:
+    description: Token used to reach the release and the attestation API.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  version:
+    description: The version that was installed.
+    value: ${{ steps.install.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - id: install
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        OWFEED_VERSION: ${{ inputs.version }}
+        OWFEED_VERIFY: ${{ inputs.verify }}
+      run: |
+        set -euo pipefail
+
+        case "$RUNNER_OS" in
+          Linux)  os=linux ;;
+          macOS)  os=darwin ;;
+          *) echo "::error::owfeed has no build for $RUNNER_OS"; exit 1 ;;
+        esac
+        case "$RUNNER_ARCH" in
+          X64)   arch=amd64 ;;
+          ARM64) arch=arm64 ;;
+          *) echo "::error::owfeed has no build for $RUNNER_ARCH"; exit 1 ;;
+        esac
+        asset="owfeed-${os}-${arch}"
+
+        dir="${RUNNER_TEMP}/owfeed"
+        mkdir -p "$dir"
+
+        if [ "$OWFEED_VERSION" = "latest" ]; then
+          echo "::warning::owfeed pinned to \"latest\"; pin a tag so the tool that signs your feed cannot change between runs"
+          gh release download --repo VizzleTF/owfeed --pattern "$asset" --dir "$dir"
+          tag=$(gh release view --repo VizzleTF/owfeed --json tagName --jq .tagName)
+        else
+          tag="$OWFEED_VERSION"
+          gh release download "$tag" --repo VizzleTF/owfeed --pattern "$asset" --dir "$dir"
+        fi
+
+        # Verify BEFORE the binary is ever executed or put on PATH. A check that
+        # runs after the thing it checks is not a check.
+        if [ "$OWFEED_VERIFY" = "true" ]; then
+          if ! gh attestation verify "$dir/$asset" --repo VizzleTF/owfeed; then
+            echo "::error::$asset does not verify against VizzleTF/owfeed's build attestation -- refusing to install it"
+            rm -f "$dir/$asset"
+            exit 1
+          fi
+        else
+          echo "::warning::owfeed installed without verifying its build attestation"
+        fi
+
+        chmod +x "$dir/$asset"
+        mv "$dir/$asset" "$dir/owfeed"
+        echo "$dir" >> "$GITHUB_PATH"
+
+        echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+        "$dir/owfeed" version
