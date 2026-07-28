@@ -91,6 +91,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # gh refuses to file against a label that does not exist, and the first
+          # disagreement is exactly the moment not to lose the report to that.
+          gh label create crosscheck --color d93f0b \
+            --description "owfeed and owlab disagree about upstream releases" 2>/dev/null || true
+
           # One open issue, not one per night. A disagreement that takes a week to
           # fix should not produce seven issues that each say the same thing.
           existing=$(gh issue list --state open --label crosscheck --json number --jq '.[0].number')
