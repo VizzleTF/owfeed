@@ -1,0 +1,106 @@
+name: Pages
+
+# Publishes owfeed.org: the config JSON Schema, and an index pointing at the docs.
+#
+# The schema is the part that has to be here. `owfeed init` writes its URL into the
+# modeline of every config it scaffolds, so an editor fetches it -- and a modeline
+# pointing at a 404 is worse than no modeline, which is why there was none until
+# this workflow existed.
+#
+# No keys are involved anywhere. This publishes documentation; the feed is a
+# different site with a different workflow, and the two must not learn to share a
+# job that has a secret in it.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'schema/**'
+      - 'docs/**'
+      - 'README.md'
+      - 'README_ru.md'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time, and never cancel one in flight: a half-uploaded site is
+# a schema URL that answers 404 for everyone whose editor asks during the gap.
+concurrency:
+  group: pages-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The schema is generated from internal/config, and the checked-in copy is
+      # what gets published. Regenerating here and diffing means a stale file is
+      # caught before it reaches the URL editors read, not after.
+      - name: The checked-in schema matches the code
+        run: go test ./internal/schema
+
+      - name: Assemble the site
+        run: |
+          set -eu
+          mkdir -p site/schema site/docs
+          cp schema/v1.json site/schema/v1.json
+          cp docs/*.md site/docs/
+          cp README.md README_ru.md site/docs/
+
+          # Pages serves what it is given; nothing here renders Markdown, so the
+          # index links to GitHub for prose and serves the schema itself.
+          cat > site/index.html <<'HTML'
+          <!doctype html>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>owfeed</title>
+          <style>
+            :root { color-scheme: light dark; }
+            body { max-width: 44rem; margin: 4rem auto; padding: 0 1.5rem;
+                   font: 16px/1.6 system-ui, sans-serif; }
+            code { font-family: ui-monospace, monospace; }
+            h1 { margin-bottom: 0; }
+            p.lead { margin-top: .25rem; opacity: .75; }
+            ul { padding-left: 1.2rem; }
+            li { margin: .4rem 0; }
+          </style>
+          <h1>owfeed</h1>
+          <p class="lead">A signed OpenWrt package feed from a directory. apk for 25.12 and later,
+          opkg for 24.10 and earlier.</p>
+          <ul>
+            <li><a href="/schema/v1.json"><code>schema/v1.json</code></a> — the
+                <code>owfeed.yml</code> schema, generated from the code</li>
+            <li><a href="https://github.com/VizzleTF/owfeed">owfeed</a> — build, sign, index, publish</li>
+            <li><a href="https://github.com/VizzleTF/owlab">owlab</a> — develop and prove a package works</li>
+            <li><a href="https://github.com/VizzleTF/owfeed/blob/main/docs/ECOSYSTEM.md">ECOSYSTEM.md</a>
+                — where the boundary between them runs</li>
+            <li><a href="https://github.com/VizzleTF/owfeed/blob/main/docs/artifact-contract.md">artifact contract</a>
+                · <a href="https://github.com/VizzleTF/owfeed/blob/main/docs/manifest-format.md">manifest format</a></li>
+          </ul>
+          HTML
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0

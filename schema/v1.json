@@ -1,0 +1,369 @@
+{
+  "$comment": "Generated from internal/config by internal/schema. This describes the shape of a config, not the rules owfeed applies to one: some keys parse here and are then refused by the validator, which remains the specification. Regenerate with `go test ./internal/schema -update`.",
+  "$defs": {
+    "Build": {
+      "additionalProperties": false,
+      "properties": {
+        "changed-only": {
+          "deprecated": true,
+          "description": "not implemented: every configured package is built",
+          "type": "boolean"
+        },
+        "sdk": {
+          "$ref": "#/$defs/SDK"
+        }
+      },
+      "type": "object"
+    },
+    "Feed": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "homepage": {
+          "type": "string"
+        },
+        "license": {
+          "type": "string"
+        },
+        "maintainer": {
+          "type": "string"
+        },
+        "name": {
+          "description": "Name seeds every derived filename: <name>.pem, <name>.list, <name>-keyring.",
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "url": {
+          "description": "URL is the final, user-facing base URL. It must be the address apk will actually fetch: apk does not follow redirects with the stock uclient-fetch, so an apex that redirects to www, or http that upgrades to https, is a broken feed even though it works in a browser. `owfeed doctor` proves this against the live URL; here we only reject the shapes that are wrong on their face.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "I18n": {
+      "additionalProperties": false,
+      "properties": {
+        "basename": {
+          "description": "Basename names the compiled catalogues: <basename>.<lang>.lmo. It defaults to the .po file's own name, which is what luci.mk uses. It is worth setting deliberately. LuCI's loader globs *.<lang>.lmo, so any basename is found — but if a package previously shipped its translations through a separate luci-i18n-<name>-<lang> package, a router upgrading from that release still owns the old path. Reusing it is a file conflict, and apk refuses the upgrade. luci-theme-footstrap moved to footstrap-theme.<lang>.lmo for exactly this reason.",
+          "type": "string"
+        },
+        "dest": {
+          "description": "Dest is where the catalogues are installed. The default is where LuCI looks.",
+          "type": "string"
+        },
+        "from": {
+          "description": "From is a directory laid out as <lang>/*.po, which is where both LuCI's own po/ convention and the i18n/ variant put them.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Layout": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "description": "Path is templated with {release} and {arch}. The default matches what the ecosystem already publishes, so install snippets look native.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Package": {
+      "additionalProperties": false,
+      "properties": {
+        "abiversion": {
+          "description": "ABIVersion is appended to the package name and mirrored into tags:openwrt:abiversion, which ImageBuilder needs to resolve the dependency.",
+          "type": "string"
+        },
+        "arch": {
+          "description": "Arch is \"noarch\" for architecture-independent packages, or a list of architectures for one carrying compiled code. It is never \"all\": apk rejects \"all\" as uninstallable, which is why OpenWrt's own package-pack.mk translates LUCI_PKGARCH:=all into arch:noarch.",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ]
+        },
+        "build": {
+          "enum": [
+            "mkpkg",
+            "sdk"
+          ],
+          "type": "string"
+        },
+        "conffiles": {
+          "description": "Conffiles become /lib/apk/packages/<name>.conffiles and .conffiles_static. sysupgrade reads the latter to decide which config files to carry across an upgrade, so omitting it silently loses the user's configuration.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "conflicts": {
+          "description": "Conflicts are packages that must not be installed alongside this one. apk spells a conflict as a negative dependency, so these become !name entries in depends. OpenWrt's own apk build drops CONFLICTS on the floor: package-pack.mk emits it only into the ipk control file and never passes it to mkpkg. A package whose Makefile declares a conflict therefore does not enforce it on 25.12 at all, which is how two packages that both rewrite the routing table end up installed together.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "depends": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "description": {
+          "type": "string"
+        },
+        "files": {
+          "description": "Files is the staged rootfs handed to `apk mkpkg --files`. It may contain {arch}, which is required when the package names more than one architecture: those packages differ by definition, so one payload cannot serve them all.",
+          "type": "string"
+        },
+        "i18n": {
+          "$ref": "#/$defs/I18n",
+          "description": "I18n compiles gettext catalogues into the payload. LuCI reads compiled .lmo files and ignores .po entirely, so without this a package's translations simply do not exist on the router."
+        },
+        "license": {
+          "type": "string"
+        },
+        "maintainer": {
+          "type": "string"
+        },
+        "name": {
+          "description": "Name, with Build: mkpkg, names a package built from a staged rootfs.",
+          "type": "string"
+        },
+        "path": {
+          "description": "Path points at a directory containing an OpenWrt Makefile (SDK build).",
+          "type": "string"
+        },
+        "provides": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "recommends": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "releases": {
+          "description": "Releases are the release lines this package is published to. Empty means all of them, which is right for anything that runs on both — but a package that depends on something only one line has must say so, or it lands in a feed where it cannot resolve.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "replaces": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "repo-commit": {
+          "description": "RepoCommit is the commit the package was built from, recorded in apk's repo-commit field. \"env:VAR\" reads it from the environment, which is how a CI job passes $CI_COMMIT_SHA or $GITHUB_SHA without the value being committed.",
+          "type": "string"
+        },
+        "scripts": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Scripts maps an apk script type (post-install, pre-deinstall, ...) to a file.",
+          "type": "object"
+        },
+        "url": {
+          "description": "URL is where the package comes from. In a feed that carries other people's work this is not decoration: it is the only thing in the installed package that says who to go to when it misbehaves, and `owfeed doctor` can be told to require it.",
+          "type": "string"
+        },
+        "version": {
+          "description": "Version is a literal version, mutually exclusive with VersionFrom.",
+          "type": "string"
+        },
+        "version-from": {
+          "description": "VersionFrom reads the version from somewhere: \"makefile:PATH\", \"file:PATH\", or \"git-describe\".",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Publish": {
+      "additionalProperties": false,
+      "properties": {
+        "bucket": {
+          "description": "s3 / rsync fields, declared for schema completeness.",
+          "type": "string"
+        },
+        "cache-control": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "credentials": {
+          "type": "string"
+        },
+        "dest": {
+          "type": "string"
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "prefix": {
+          "type": "string"
+        },
+        "region": {
+          "type": "string"
+        },
+        "target": {
+          "enum": [
+            "github-pages",
+            "s3",
+            "rsync"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Release": {
+      "additionalProperties": false,
+      "properties": {
+        "arches": {
+          "description": "Arches is \"auto\" (derived from downloads.openwrt.org and pinned in owfeed.lock) or an explicit list. Explicit lists are how every existing feed ends up with a hand-maintained 36-entry matrix, so \"auto\" is the default.",
+          "oneOf": [
+            {
+              "const": "auto"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ]
+        },
+        "default": {
+          "description": "Default marks the line advertised in the install snippet.",
+          "type": "boolean"
+        },
+        "format": {
+          "description": "Format is \"apk\" or \"ipk\": apk for 25.12 and later, ipk for 24.10 and earlier. Both are implemented, and a feed serving both lines signs each with the scheme its package manager verifies -- see Signing.UsignKey.",
+          "enum": [
+            "apk",
+            "ipk"
+          ],
+          "type": "string"
+        },
+        "line": {
+          "description": "Line is a major.minor line such as \"25.12\", or \"snapshot\".",
+          "type": "string"
+        },
+        "prerelease": {
+          "description": "Prerelease builds and publishes the line without advertising it.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "SDK": {
+      "additionalProperties": false,
+      "properties": {
+        "release": {
+          "description": "Release is a concrete point release such as \"25.12.5\", or \"latest-point\". Never SNAPSHOT: those tarballs are rotated on the mirrors, so a checksum can legitimately fail to match the bytes that arrive moments later.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Signing": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "description": "Key is \"env:VAR\" or \"file:PATH\".",
+          "type": "string"
+        },
+        "keyring-package": {
+          "deprecated": true,
+          "description": "KeyringPackage ships a <name>-keyring package carrying the feed's public key, which is the only way a rotated key reaches already-installed routers. -- not implemented: install the key as the generated snippet describes",
+          "type": "boolean"
+        },
+        "sign-packages": {
+          "description": "SignPackages also signs each .apk, not just the index. OpenWrt 25.12 never signs individual packages, so `apk add ./file.apk` always needs --allow-untrusted there, and LuCI's Upload Package flow — which cannot pass that flag, since package-manager-call drops unrecognised arguments — is simply broken for third-party packages. Signing each package costs nothing and fixes both, so it is on by default.",
+          "type": "boolean"
+        },
+        "usign-key": {
+          "description": "UsignKey signs opkg indexes and release manifests, as \"env:VAR\" or \"file:PATH\". It is a second key and cannot be avoided: opkg verifies usign/ed25519 while apk verifies EC prime256v1, so a feed serving both release lines signs each with the scheme its package manager understands.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$id": "https://owfeed.org/schema/v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Config is a parsed owfeed.yml.",
+  "properties": {
+    "build": {
+      "$ref": "#/$defs/Build"
+    },
+    "feed": {
+      "$ref": "#/$defs/Feed"
+    },
+    "layout": {
+      "$ref": "#/$defs/Layout"
+    },
+    "overrides": {
+      "deprecated": true,
+      "description": "Declared so that writing them is a clear \"not in this version\" error rather than a silent no-op. See notImplemented. Typed as free-form maps rather than yaml.Node: strict decoding recurses, and a yaml.Node field would have every key inside these blocks checked against yaml.Node's own fields. -- not implemented: remove the block",
+      "items": {
+        "additionalProperties": {},
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "packages": {
+      "items": {
+        "$ref": "#/$defs/Package"
+      },
+      "type": "array"
+    },
+    "publish": {
+      "items": {
+        "$ref": "#/$defs/Publish"
+      },
+      "type": "array"
+    },
+    "releases": {
+      "items": {
+        "$ref": "#/$defs/Release"
+      },
+      "type": "array"
+    },
+    "retention": {
+      "additionalProperties": {},
+      "deprecated": true,
+      "description": "not implemented: nothing is garbage-collected in this version",
+      "type": "object"
+    },
+    "signing": {
+      "$ref": "#/$defs/Signing"
+    },
+    "version": {
+      "const": 1,
+      "type": "integer"
+    }
+  },
+  "title": "owfeed.yml",
+  "type": "object"
+}

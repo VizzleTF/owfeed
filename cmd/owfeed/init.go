@@ -130,9 +130,18 @@ func sanitiseName(s string) string {
 func scaffold(name, url string) string {
 	// No $schema modeline. There was one, pointing at a host that does not exist and
 	// a file that was never published — so the first line of every config owfeed
-	// generated was a promise it did not keep. It comes back when there is a schema
-	// to point at; until then the validator is the specification, and it rejects an
-	// unknown key rather than warning about it.
+	// generated was a promise it did not keep. Until then the validator is the
+	// specification, and it rejects an unknown key rather than warning about it.
+	//
+	// The schema now exists: internal/schema generates it from internal/config, and
+	// .github/workflows/pages.yml publishes it. The modeline comes back when the URL
+	// in schema.ID actually answers — not when the file exists in the repository.
+	// That is the same mistake as last time, one directory further along. Check it,
+	// then add:
+	//
+	//	# yaml-language-server: $schema=https://owfeed.org/schema/v1.json
+	//
+	//	$ curl -fsS https://owfeed.org/schema/v1.json | head -1
 	return fmt.Sprintf(`# Reference: https://github.com/VizzleTF/owfeed/blob/main/docs/examples.md
 version: 1
 
