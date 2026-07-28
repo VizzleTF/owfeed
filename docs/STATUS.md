@@ -29,7 +29,8 @@ feed, or released binaries — not by reading the code.
 | Install from a signed feed by name | `owlab test --feed` on 25.12: package installs, LuCI page renders. With the key removed the router reports it as not existing at all |
 | Third-party intake | Run against a real release: signature verifies, and the six-field manifest is correctly refused as the wrong format |
 | Schema published and generated | `owfeed.org/schema/v1.json` is byte-identical to the checked-in copy; the drift test fails when a field is added and the annotation guard fails when a key is renamed |
-| `owfeed releases` against owlab | Both answer 25.12→25.12.5/apk and 24.10→24.10.8/ipk today, and the comparison reports a disagreement when either answer is perturbed |
+| `owfeed releases` against owlab | Both answer 25.12→25.12.5/apk and 24.10→24.10.8/ipk today; the nightly job ran green on a runner, and reports a disagreement when either answer is perturbed |
+| `feed.yml` in `dry-run` mode | owfeed-packages ran it end to end: build with no key, throwaway keys, sign, index, check-tree, doctor, smoke on both lines, a tree digest, publish job skipped |
 
 ## Built but not yet exercised in anger
 
@@ -39,13 +40,8 @@ feed, or released binaries — not by reading the code.
   demand `install.sh.sig` and fail loudly if it is missing.
 - **The intake funnel** answers correctly when run by hand. No third party has used
   it yet, so the first genuine request is still the first genuine test.
-- **`feed.yml` in `dry-run` mode**, and its `digest` / `published` / `page-url`
-  outputs. `owfeed-packages` calls it on every pull request as of v0.1.7, so the
-  first real run is the next pull request opened there — most likely one the hourly
-  update bot opens by itself.
-- **The nightly cross-check** (`.github/workflows/crosscheck.yml`). The comparison
-  was run locally against both tools and behaves in both directions; what has not
-  happened yet is a scheduled run on a runner.
+- **`feed.yml`'s `published` and `page-url` outputs.** `digest` is confirmed; the
+  other two only ever have a value on the publish path, which nothing calls yet.
 - **Reading the signing key from the environment** in `feed.yml`'s publish job.
   GitHub's documentation is explicit that a called job declaring `environment:`
   uses that environment's secret rather than a passed-in one, and the job now
@@ -56,6 +52,11 @@ feed, or released binaries — not by reading the code.
   half yet: `owfeed-packages` moved its pull-request check across and kept its
   hand-written `publish.yml`, so the question gets answered by a deliberate run
   rather than by a feed that stopped publishing.
+
+  The check half being green is not evidence either way — it holds no secret and
+  declares no environment. What the first run of it did prove is the value of
+  running one: two defects in v0.1.6 that no amount of reading had found, both
+  fixed in v0.1.7.
 
 ## Not built, and why
 
