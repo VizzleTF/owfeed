@@ -142,9 +142,9 @@ jobs:
       pages: write
       id-token: write
       actions: read
-    uses: VizzleTF/owfeed/.github/workflows/feed.yml@v0.1.3
+    uses: VizzleTF/owfeed/.github/workflows/feed.yml@v0.1.4
     with:
-      owfeed-version: v0.1.3
+      owfeed-version: v0.1.4
       smoke-releases: "25.12 24.10"
     secrets:
       sign-key: ${{ secrets.OWFEED_SIGN_KEY }}
@@ -163,8 +163,8 @@ The `environment:` on the publish job is still what gates the run behind a revie
 If you want the steps yourself, take the tool and leave the shape:
 
 ```yaml
-- uses: VizzleTF/owfeed/setup@v0.1.3
-  with: { version: v0.1.3 }
+- uses: VizzleTF/owfeed/setup@v0.1.4
+  with: { version: v0.1.4 }
 - run: owfeed --frozen-lock build && owfeed sign && owfeed index
   env:
     OWFEED_SIGN_KEY: ${{ secrets.OWFEED_SIGN_KEY }}
