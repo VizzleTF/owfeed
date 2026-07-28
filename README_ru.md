@@ -24,13 +24,13 @@ go install github.com/VizzleTF/owfeed/cmd/owfeed@latest
 с контрольной суммой из того же релиза, которую подменивший бинарь подменил бы заодно:
 
 ```sh
-gh release download v0.1.5 -R VizzleTF/owfeed -p 'owfeed-linux-amd64'
+gh release download v0.1.6 -R VizzleTF/owfeed -p 'owfeed-linux-amd64'
 gh attestation verify owfeed-linux-amd64 -R VizzleTF/owfeed \
   --signer-workflow VizzleTF/owfeed/.github/workflows/release.yml
 chmod +x owfeed-linux-amd64 && sudo mv owfeed-linux-amd64 /usr/local/bin/owfeed
 ```
 
-В GitHub Actions эту проверку делает за вас `VizzleTF/owfeed/setup@v0.1.5`. Сборки есть под linux и
+В GitHub Actions эту проверку делает за вас `VizzleTF/owfeed/setup@v0.1.6`. Сборки есть под linux и
 darwin, amd64 и arm64.
 
 **Что нужно рядом.** Для `build`, `sign`, `index` и `publish` — ничего: apk-тулчейн скачивается из
@@ -210,9 +210,9 @@ jobs:
       pages: write
       id-token: write
       actions: read
-    uses: VizzleTF/owfeed/.github/workflows/feed.yml@v0.1.5
+    uses: VizzleTF/owfeed/.github/workflows/feed.yml@v0.1.6
     with:
-      owfeed-version: v0.1.5
+      owfeed-version: v0.1.6
       smoke-releases: "25.12 24.10"
     secrets:
       sign-key: ${{ secrets.OWFEED_SIGN_KEY }}
@@ -231,8 +231,8 @@ job нет environment, поэтому прочитать environment-секре
 Если шаги нужны свои — берите инструмент, оставьте форму:
 
 ```yaml
-- uses: VizzleTF/owfeed/setup@v0.1.5
-  with: { version: v0.1.5 }
+- uses: VizzleTF/owfeed/setup@v0.1.6
+  with: { version: v0.1.6 }
 - run: owfeed --frozen-lock build && owfeed sign && owfeed index
   env:
     OWFEED_SIGN_KEY: ${{ secrets.OWFEED_SIGN_KEY }}

@@ -2,7 +2,7 @@
 
 Dates are when the tag was cut. Anything not listed is documentation or tests.
 
-## Unreleased
+## v0.1.6 — 2026-07-28
 
 - `owfeed releases` reports what the download server publishes per line and which
   package format that line takes. It exists to be compared against: owlab answers

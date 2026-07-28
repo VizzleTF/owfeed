@@ -43,10 +43,10 @@ name: owfeed feed
 #         pages: write
 #         id-token: write
 #         actions: read
-#       uses: VizzleTF/owfeed/.github/workflows/feed.yml@v0.1.5
+#       uses: VizzleTF/owfeed/.github/workflows/feed.yml@v0.1.6
 #       secrets: inherit        # so the publish job can read the environment's key
 #       with:
-#         owfeed-version: v0.1.5
+#         owfeed-version: v0.1.6
 #         pre-build: for d in packages/*/; do ./tools/fetch.sh "$d"; done
 #         post-index: ./tools/check-tree.sh
 #         smoke-releases: "25.12 24.10"
@@ -55,9 +55,9 @@ name: owfeed feed
 #
 #   jobs:
 #     check:
-#       uses: VizzleTF/owfeed/.github/workflows/feed.yml@v0.1.5
+#       uses: VizzleTF/owfeed/.github/workflows/feed.yml@v0.1.6
 #       with:
-#         owfeed-version: v0.1.5
+#         owfeed-version: v0.1.6
 #         dry-run: true         # throwaway keys, no environment, nothing published
 #         pre-build: for d in packages/*/; do ./tools/fetch.sh "$d"; done
 #         post-index: ./tools/check-tree.sh
@@ -167,7 +167,7 @@ jobs:
       SOURCE_DATE_EPOCH: ${{ inputs.source-date-epoch }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: VizzleTF/owfeed/setup@v0.1.5
+      - uses: VizzleTF/owfeed/setup@v0.1.6
         with:
           version: ${{ inputs.owfeed-version }}
 
@@ -204,7 +204,7 @@ jobs:
       SOURCE_DATE_EPOCH: ${{ inputs.source-date-epoch }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: VizzleTF/owfeed/setup@v0.1.5
+      - uses: VizzleTF/owfeed/setup@v0.1.6
         with:
           version: ${{ inputs.owfeed-version }}
 
@@ -280,7 +280,7 @@ jobs:
       OWFEED_USIGN_KEY: ${{ secrets.OWFEED_USIGN_KEY || secrets.usign-key }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: VizzleTF/owfeed/setup@v0.1.5
+      - uses: VizzleTF/owfeed/setup@v0.1.6
         with:
           version: ${{ inputs.owfeed-version }}
 
