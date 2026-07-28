@@ -1,10 +1,56 @@
 # owfeed
 
+*[Русская версия](README_ru.md)*
+
 One binary. Turns a directory into a signed apk feed for **OpenWrt 25.12+**, so your users run three
 lines and `apk add` works.
 
 A noarch package across all 35 architectures — built, signed, indexed, laid out — takes ~25 seconds.
 The status quo is 35 SDK builds.
+
+---
+
+## How it works
+
+**A feed is a directory of files served over HTTPS.** No server software, no database. You produce
+the directory; anything that can serve static files will do.
+
+```
+feed/
+  podkop.pem                            your PUBLIC key
+  releases/25.12/x86_64/
+    packages.adb                        the signed index (binary)
+    index.json                          the same thing as JSON
+    sha256sums
+    podkop-0.28-r1.apk                  the packages, flat, beside the index
+    luci-app-podkop-0.28-r1.apk
+  releases/25.12/aarch64_cortex-a53/    the same files again
+  …                                     35 directories, one per architecture
+```
+
+**On the router, four things happen:**
+
+1. The user drops your `.pem` into `/etc/apk/keys/`. The router now trusts your signature.
+2. They write one line into `/etc/apk/repositories.d/<feed>.list` — the direct URL of `packages.adb`.
+3. `apk update` fetches that index and verifies it against your key.
+4. `apk add podkop` finds `podkop 0.28-r1` in the index, **derives the filename from the name and
+   version**, fetches `podkop-0.28-r1.apk` from the same directory, checks it against the hash the
+   index recorded, and installs it.
+
+**Where does it install to?** A package's payload *is* a piece of the root filesystem. What you put
+in `staging/podkop/etc/config/podkop` arrives at `/etc/config/podkop`.
+
+**Why 35 copies of the same file?** In apk's `ndx` mode a router reads exactly one index — the one
+for its own architecture. A noarch package has to be in all of them. The copies are byte-identical.
+
+The stages map onto that one to one:
+
+| | |
+|---|---|
+| `build` | your staged directory → `.apk` files |
+| `sign` | a signature into each `.apk` |
+| `index` | fan out into the 35 directories, write a signed `packages.adb` in each |
+| `publish` | check it all, hand the directory to whatever uploads it |
 
 ---
 
@@ -114,7 +160,8 @@ URL · `smoke` inside `openwrt/rootfs` · SBOM · key rotation commands.
 
 ## Docs
 
-- [Examples](docs/examples.md) — a real LuCI theme, end to end.
+- [Examples](docs/examples.md) — a LuCI theme and a two-package feed, end to end.
+  *([Русский](docs/examples_ru.md))*
 - [Verified apk behaviour](docs/apk-behaviour.md) — what apk actually does, with reproductions.
 - [Design](docs/DESIGN.md) — the full design and the research behind it *(Russian)*.
 

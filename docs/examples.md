@@ -1,5 +1,18 @@
 # Examples
 
+*[Русская версия](examples_ru.md)*
+
+Three worked examples, smallest first. Each one is a directory you already have, a config, and four
+commands. If the shape of a feed is not yet clear, [How it works](../README.md#how-it-works) is
+twenty lines.
+
+- [The simplest thing that works](#the-simplest-thing-that-works)
+- [A LuCI theme: luci-theme-footstrap](#a-luci-theme-luci-theme-footstrap) — translations
+- [Two packages from one repository: podkop](#two-packages-from-one-repository-podkop) — conflicts,
+  real dependencies
+
+---
+
 ## The simplest thing that works
 
 A directory of files, laid out the way it should install:
@@ -34,7 +47,7 @@ owfeed build && owfeed sign && owfeed index && owfeed doctor
 
 ---
 
-## A real LuCI theme: luci-theme-footstrap
+## A LuCI theme: luci-theme-footstrap
 
 [luci-theme-footstrap](https://github.com/VizzleTF/luci-theme-footstrap) is a noarch LuCI theme —
 CSS, templates and translations, no compiled code. Exactly the case where the status quo asks for 35
