@@ -23,8 +23,8 @@ jobs:
       # attest v4 records artifact storage as well as the attestation itself.
       artifact-metadata: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: true
@@ -59,7 +59,7 @@ jobs:
       # file's digest up among those subjects -- measured, not assumed: a binary with
       # one byte appended is rejected, and so is the same binary checked against a
       # different repository.
-      - uses: actions/attest-build-provenance@v4
+      - uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
           subject-path: dist/owfeed-*
 

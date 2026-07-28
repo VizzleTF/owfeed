@@ -1,0 +1,20 @@
+# SHA pins rot without this. A pinned action is only a decision anyone made if
+# something proposes the update as a diff; otherwise it is a version nobody chose
+# that stops receiving fixes -- the failure mode of pinning without automation.
+#
+# Dependabot rewrites the SHA and the version comment together, so a pull request
+# here says which release it is moving to.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
