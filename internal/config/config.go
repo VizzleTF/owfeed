@@ -103,8 +103,9 @@ type Release struct {
 	Arches Arches `yaml:"arches"`
 	// Prerelease builds and publishes the line without advertising it.
 	Prerelease bool `yaml:"prerelease"`
-	// Format is "apk" or "ipk". Only apk is implemented; the field exists so that
-	// adding 24.10 later is additive rather than a schema change.
+	// Format is "apk" or "ipk": apk for 25.12 and later, ipk for 24.10 and earlier.
+	// Both are implemented, and a feed serving both lines signs each with the scheme
+	// its package manager verifies -- see Signing.UsignKey.
 	Format string `yaml:"format"`
 }
 
@@ -182,7 +183,16 @@ const (
 	// toolchain, seconds rather than tens of minutes — correct for anything
 	// architecture-independent, which is most of what third parties ship.
 	BuildMkpkg BuildMode = "mkpkg"
-	// BuildSDK compiles through the OpenWrt SDK.
+	// BuildSDK compiles through the OpenWrt SDK, which owfeed does not do and is not
+	// going to. It is recognised so the config can be refused by name, with somewhere
+	// to go, rather than as an unknown key.
+	//
+	// Compilation belongs to a development tool: the target table it needs moves with
+	// every OpenWrt release, and the reason to build a package before publishing it --
+	// luci.mk minifies JS and CSS on the way in, so "works unminified, breaks minified"
+	// is invisible until something builds it -- is an argument from testing, not from
+	// distribution. Build with owlab, openwrt/gh-action-sdk, or a hand-written SDK call,
+	// and hand owfeed the directory. See docs/artifact-contract.md.
 	BuildSDK BuildMode = "sdk"
 )
 

@@ -148,11 +148,12 @@ func TestRejects(t *testing.T) {
 			wantSub: "absolute",
 		},
 		{
-			// An SDK build is a real thing to ask for and this version cannot do it.
-			// Saying so beats building nothing and reporting success.
-			name:    "sdk build not implemented",
+			// An SDK build is a real thing to ask for and owfeed does not do it, by
+			// design rather than by omission. Refusing by name and pointing at where
+			// compilation lives beats building nothing and reporting success.
+			name:    "sdk build refused",
 			src:     strings.Replace(minimal, "  - name: luci-theme-footstrap\n    build: mkpkg\n", "  - path: net/foo\n", 1),
-			wantSub: "not implemented",
+			wantSub: "does not compile",
 		},
 		{
 			name:    "retention silently ignored",

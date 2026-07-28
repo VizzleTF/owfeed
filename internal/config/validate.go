@@ -207,8 +207,8 @@ func (c *Config) validatePackages(path string) error {
 		if mode == BuildSDK {
 			return &Error{
 				Path: path,
-				Msg:  fmt.Sprintf("%s builds through the SDK, which is not implemented yet", where),
-				Hint: "this version builds architecture-independent packages with apk mkpkg: set `build: mkpkg`, `arch: noarch`, and `files:` to a staged rootfs",
+				Msg:  fmt.Sprintf("%s builds through the SDK, which owfeed does not do", where),
+				Hint: "owfeed packages, it does not compile: build elsewhere -- owlab, openwrt/gh-action-sdk, or your own SDK call -- and leave the result in dist/<arch>/, which every later stage reads. See docs/artifact-contract.md. To stage a finished tree here instead, set `build: mkpkg`, `arch: noarch`, and `files:`",
 			}
 		}
 
