@@ -72,6 +72,10 @@ func Build(opts Options) (*Result, error) {
 		return nil, fmt.Errorf("%s holds no packages to release", opts.Dir)
 	}
 
+	if err := disambiguate(pkgs); err != nil {
+		return nil, err
+	}
+
 	now := opts.Now
 	if now.IsZero() {
 		now = time.Now()
@@ -126,6 +130,53 @@ func Build(opts Options) (*Result, error) {
 	}
 
 	return &Result{Manifest: manifest, Signed: signed, KeyID: opts.Key.ID.String()}, nil
+}
+
+// disambiguate makes every asset name unique.
+//
+// Release assets are flat. An apk's filename is derived from the package name and
+// version alone -- the architecture is not in it, because in a feed the architecture
+// is the directory -- so a package built for twenty architectures produces twenty
+// files called the same thing, and uploading them to one release means nineteen of
+// them silently do not exist.
+//
+// Renaming happens only where there is a collision, so a noarch package keeps the
+// exact filename it has always had. That matters: an installer already on a router
+// looks its asset up by name, and it cannot be fixed remotely.
+//
+// The name a feed publishes it under is not this one -- it is the canonical name the
+// index derives -- which is why the manifest records the architecture beside the
+// asset. A consumer has both and does not have to guess either.
+func disambiguate(pkgs []pkg) error {
+	seen := map[string]int{}
+	for _, p := range pkgs {
+		seen[p.file]++
+	}
+
+	for i := range pkgs {
+		p := &pkgs[i]
+		if seen[p.file] < 2 {
+			continue
+		}
+		ext := filepath.Ext(p.file)
+		renamed := strings.TrimSuffix(p.file, ext) + "_" + p.arch + ext
+		dest := filepath.Join(filepath.Dir(p.path), renamed)
+		if err := os.Rename(p.path, dest); err != nil {
+			return err
+		}
+		p.file, p.path = renamed, dest
+	}
+
+	// Renaming cannot be allowed to produce a collision of its own.
+	final := map[string]string{}
+	for _, p := range pkgs {
+		if other, ok := final[p.file]; ok {
+			return fmt.Errorf("%s and %s would both be published as %s; release assets are flat, so one would replace the other",
+				other, p.path, p.file)
+		}
+		final[p.file] = p.path
+	}
+	return nil
 }
 
 type pkg struct {

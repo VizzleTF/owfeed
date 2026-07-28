@@ -268,3 +268,44 @@ func TestMultiArchPackage(t *testing.T) {
 		t.Errorf("Parse(single arch) = %v", err)
 	}
 }
+
+// An author publishing packages for someone else's feed to carry has an ipk line
+// and never builds an index: `owfeed release` signs a manifest, and the feed at the
+// far end signs the index with its own key. Requiring the index-signing key at load
+// time made `owfeed build` refuse to run for that whole shape of use, over a key it
+// would never have touched. The requirement belongs to `owfeed index`, which is
+// where the key is read and where it already lives.
+func TestIPKLineWithoutAnIndexKeyLoads(t *testing.T) {
+	c, err := parse(t, `
+version: 1
+feed:
+  name: podkop-updater
+  url: https://github.com/VizzleTF/podkop_autoupdater
+releases:
+  - line: "25.12"
+    default: true
+    format: apk
+  - line: "24.10"
+    format: ipk
+publish:
+  - target: github-pages
+packages:
+  - name: podkop-updater
+    build: mkpkg
+    arch: [x86_64]
+    version: 1.2.3-r1
+    files: ./dist/root/{arch}
+`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if c.Signing.UsignKey != "" {
+		t.Errorf("usign key = %q, want empty", c.Signing.UsignKey)
+	}
+	if got := len(c.Releases); got != 2 {
+		t.Fatalf("releases = %d, want 2", got)
+	}
+	if c.Releases[1].Format != FormatIPK {
+		t.Errorf("releases[1].format = %q, want ipk", c.Releases[1].Format)
+	}
+}

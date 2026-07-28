@@ -131,3 +131,72 @@ func key(t *testing.T) *usign.PrivateKey {
 	}
 	return priv
 }
+
+// Release assets are flat, and an apk's filename carries no architecture — in a feed
+// the architecture is the directory. A package built for several architectures
+// therefore produces several files with one name, and uploading them to one release
+// means all but one silently do not exist.
+func TestCollidingAssetNamesAreDisambiguated(t *testing.T) {
+	dir := t.TempDir()
+	arches := []string{"x86_64", "aarch64_generic", "mips_24kc"}
+	for _, a := range arches {
+		write(t, dir, a+"/demo-1.0-r1.apk", "apk for "+a)
+		write(t, dir, a+"/demo_1.0-r1_"+a+".ipk", "ipk for "+a)
+	}
+
+	res, err := Build(Options{Dir: dir, Repo: "VizzleTF/demo", Tag: "v1.0", Key: key(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(res.Manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	names := map[string]string{}
+	for _, line := range strings.Split(string(body), "\n") {
+		f := strings.Fields(line)
+		if len(f) != 7 || f[0] != "pkg" {
+			continue
+		}
+		file, arch := f[3], f[6]
+		if other, dup := names[file]; dup {
+			t.Fatalf("%s is claimed by both %s and %s; one would replace the other in the release", file, other, arch)
+		}
+		names[file] = arch
+		// The architecture has to be recoverable, because the name a feed publishes
+		// it under is the canonical one, not this.
+		if !strings.Contains(file, arch) {
+			t.Errorf("%s does not name its architecture %s", file, arch)
+		}
+		if _, err := os.Stat(filepath.Join(dir, arch, file)); err != nil {
+			t.Errorf("manifest names %s but it is not on disk: %v", file, err)
+		}
+	}
+	if len(names) != 6 {
+		t.Fatalf("manifest names %d assets, want 6", len(names))
+	}
+}
+
+// A package built for one architecture keeps the filename it has always had. An
+// installer already on a router looks its asset up by name and cannot be fixed
+// remotely, so renaming it would break every existing install.
+func TestASingleArchitectureKeepsItsName(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "noarch/luci-theme-demo-1.0-r1.apk", "apk")
+	write(t, dir, "all/luci-theme-demo_1.0-r1_all.ipk", "ipk")
+
+	res, err := Build(Options{Dir: dir, Repo: "VizzleTF/demo", Tag: "v1.0", Key: key(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(res.Manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"luci-theme-demo-1.0-r1.apk", "luci-theme-demo_1.0-r1_all.ipk"} {
+		if !strings.Contains(string(body), " "+want+" ") {
+			t.Errorf("manifest no longer names %s:\n%s", want, body)
+		}
+	}
+}

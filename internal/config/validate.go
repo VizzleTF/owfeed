@@ -130,16 +130,14 @@ func (c *Config) validateReleases(path string) error {
 				Hint: "apk for 25.12 and later, ipk for 24.10 and earlier",
 			}
 		}
-		// opkg verifies usign signatures and apk verifies EC ones, so a feed that
-		// serves 24.10 needs a second key. Finding that out from a router refusing
-		// the index is a bad way to learn it.
-		if r.Format == FormatIPK && c.Signing.UsignKey == "" {
-			return &Error{
-				Path: path,
-				Msg:  fmt.Sprintf("%s is an ipk line but signing.usign-key is not set", where),
-				Hint: "opkg checks signatures by default and verifies usign, not the EC scheme apk uses; run `owfeed keygen --usign` and point signing.usign-key at it",
-			}
-		}
+		// The usign key an ipk line needs is checked by `owfeed index`, which is
+		// where it is used, and not here.
+		//
+		// An author publishing packages for someone else's feed to carry has an ipk
+		// line and never builds an index: `owfeed release` signs a manifest, and the
+		// feed at the far end signs the index with its own key. Requiring the index
+		// key at load time made `owfeed build` refuse to run for that whole shape of
+		// use, over a key it would not have touched.
 		if r.Default {
 			defaults++
 		}
