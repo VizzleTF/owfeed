@@ -137,6 +137,11 @@ The whole thing, correctly shaped, is one job:
 ```yaml
 jobs:
   publish:
+    permissions:                 # a called workflow can only narrow these, never widen them,
+      contents: read             # so the caller has to grant what the publish job needs
+      pages: write
+      id-token: write
+      actions: read
     uses: VizzleTF/owfeed/.github/workflows/feed.yml@v0.1.1
     with:
       owfeed-version: v0.1.1
@@ -150,6 +155,10 @@ That splits build from publish so the signing key is never in the job that runs 
 scripts, gates the upload on `owfeed publish`, and installs the packages on a real OpenWrt image
 before any of it goes out. `pre-build:` and `post-index:` take shell if your feed fetches or
 checks anything of its own.
+
+The signing secrets have to be repository or organization secrets, not environment ones: a
+calling job has no environment, so it cannot read an environment secret in order to pass it on.
+The `environment:` on the publish job is still what gates the run behind a reviewer.
 
 If you want the steps yourself, take the tool and leave the shape:
 

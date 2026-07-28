@@ -136,6 +136,11 @@ URL отдаёт 404, прямо сейчас живёт в природе.
 ```yaml
 jobs:
   publish:
+    permissions:                 # вызванный workflow может их только сузить,
+      contents: read             # поэтому права выдаёт вызывающий
+      pages: write
+      id-token: write
+      actions: read
     uses: VizzleTF/owfeed/.github/workflows/feed.yml@v0.1.1
     with:
       owfeed-version: v0.1.1
@@ -149,6 +154,10 @@ jobs:
 сборочные скрипты, гейтит выгрузку через `owfeed publish` и ставит пакеты на живой образ OpenWrt
 до того, как что-либо уедет. `pre-build:` и `post-index:` принимают шелл, если ваш фид что-то
 докачивает или проверяет сам.
+
+Ключи подписи должны быть секретами репозитория или организации, не environment: у вызывающего
+job нет environment, поэтому прочитать environment-секрет и передать дальше он не может.
+`environment:` на publish-job при этом остаётся тем, что ставит прогон за ревьюера.
 
 Если шаги нужны свои — берите инструмент, оставьте форму:
 

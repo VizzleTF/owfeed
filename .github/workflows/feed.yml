@@ -12,8 +12,10 @@ name: owfeed feed
 #   - Publishing is gated on `owfeed publish`, which refuses an unsigned or unchecked
 #     tree and has no flag to say otherwise. Every hand-written feed workflow in the
 #     wild ends in an unconditional upload of whatever the build step left behind.
-#   - The publish job runs in an environment, so approval and secret scoping are the
-#     repository's to configure rather than something each feed reinvents.
+#   - The publish job runs in an environment, so approval is the repository's to
+#     configure rather than something each feed reinvents. The signing secrets
+#     themselves must be repository or organization secrets: a calling job has no
+#     environment, so it cannot read an environment secret in order to pass one on.
 #
 # The setup action below is referenced by exact tag rather than a floating major, so
 # that pinning this workflow pins everything it runs. RELEASING.md is the two lines
@@ -23,6 +25,11 @@ name: owfeed feed
 #
 #   jobs:
 #     publish:
+#       permissions:            # a called workflow can only narrow these, never widen
+#         contents: read        # them, so the caller grants what the publish job needs
+#         pages: write
+#         id-token: write
+#         actions: read
 #       uses: VizzleTF/owfeed/.github/workflows/feed.yml@v0.1.1
 #       with:
 #         owfeed-version: v0.1.1

@@ -634,3 +634,36 @@ repository it came from.
 ## `download-artifact` fails on a digest mismatch from v8
 
 Earlier versions logged a warning. This is the right default and worth having.
+
+## A reusable workflow cannot grant itself permissions
+
+`GITHUB_TOKEN` permissions can only be narrowed down a call chain, never widened. A
+called workflow that declares `pages: write` on one of its jobs gets it only if the
+*calling* job already had it — and the recommended hardening setting is a default
+token that is read-only, so the natural-looking
+
+```yaml
+jobs:
+  publish:
+    uses: someone/repo/.github/workflows/feed.yml@v1
+```
+
+is a publish job with no permission to publish. The caller has to say so:
+
+```yaml
+jobs:
+  publish:
+    permissions: { contents: read, pages: write, id-token: write, actions: read }
+    uses: ...
+```
+
+## An environment secret cannot be passed into a reusable workflow
+
+`workflow_call` does not support the `environment` keyword, so the calling job has no
+environment and cannot read an environment-scoped secret in order to pass it on. A
+reusable workflow that takes its signing key as a declared secret therefore requires
+that key to be a repository or organization secret.
+
+The `environment:` on the called job still does the thing worth having — it is what
+puts the run behind a required reviewer. The scoping of the secret and the gating of
+the job are separate mechanisms, and it is easy to assume one implies the other.
