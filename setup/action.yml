@@ -76,9 +76,16 @@ runs:
           # write -- so a merged pull request adding one workflow would be enough to
           # mint a valid attestation for any bytes at all. Pinning the workflow file
           # is what makes this an assertion about how the binary was built.
-          if ! gh attestation verify "$dir/$asset" \
+          # gh writes its result to stderr, which a composite step swallows. A check
+          # nobody can see ran is one nobody believes ran, so it is captured and
+          # echoed either way.
+          if out=$(gh attestation verify "$dir/$asset" \
               --repo VizzleTF/owfeed \
-              --signer-workflow VizzleTF/owfeed/.github/workflows/release.yml; then
+              --signer-workflow VizzleTF/owfeed/.github/workflows/release.yml 2>&1); then
+            echo "$out"
+            echo "verified $asset as built by VizzleTF/owfeed .github/workflows/release.yml"
+          else
+            echo "$out"
             echo "::error::$asset does not verify as built by VizzleTF/owfeed's release workflow -- refusing to install it"
             rm -f "$dir/$asset"
             exit 1
