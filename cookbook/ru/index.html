@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Кукбук — выпустить пакет для OpenWrt</title>
+<meta name="description" content="Собрать пакет LuCI, проверить его на живом роутере, подписать и положить туда, откуда пользователи поставят его через apk add. По шагам, с готовыми файлами.">
+<link rel="canonical" href="https://owfeed.org/cookbook/ru/">
+<link rel="alternate" hreflang="en" href="https://owfeed.org/cookbook/">
+<link rel="alternate" hreflang="ru" href="https://owfeed.org/cookbook/ru/">
+<meta name="color-scheme" content="light dark">
+<style>
+
+:root{
+  --canvas:#FAFAF9; --surface-1:#FFFFFF; --surface-2:#F4F4F2;
+  --line:#E5E4E1; --line-strong:#C9C7C2;
+  --ink:#18181B; --ink-muted:#52525B; --ink-subtle:#8A8A93;
+  --accent:#B45309; --ok:#15803D;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --canvas:#0A0A0B; --surface-1:#131316; --surface-2:#1B1B1F;
+    --line:#26262B; --line-strong:#3A3A42;
+    --ink:#F4F4F5; --ink-muted:#A1A1AA; --ink-subtle:#71717A;
+    --accent:#F59E0B; --ok:#4ADE80;
+  }
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--canvas); color:var(--ink);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif;
+  -webkit-text-size-adjust:100%;
+}
+.wrap{max-width:46rem;margin:0 auto;padding:2.5rem 1.25rem 6rem}
+code,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+nav{display:flex;justify-content:space-between;align-items:center;
+  font-family:ui-monospace,monospace;font-size:.8rem;margin-bottom:3.5rem}
+nav a{color:var(--ink-subtle);text-decoration:none}
+nav a:hover{color:var(--ink)}
+nav .here{color:var(--ink)}
+h1{font-size:2rem;line-height:1.2;letter-spacing:-.02em;margin:0 0 .75rem}
+h2{font-size:1.25rem;letter-spacing:-.01em;margin:3.5rem 0 .5rem;padding-top:1.5rem;
+  border-top:1px solid var(--line)}
+h3{font-size:1rem;margin:2rem 0 .5rem}
+.lead{color:var(--ink-muted);font-size:1.05rem;margin:0 0 2rem}
+.kicker{font-family:ui-monospace,monospace;font-size:.7rem;text-transform:uppercase;
+  letter-spacing:.09em;color:var(--ink-subtle);margin:0 0 .4rem}
+p{margin:0 0 1rem}
+a{color:var(--accent)}
+pre{background:var(--surface-1);border:1px solid var(--line);border-radius:.5rem;
+  padding:.9rem 1rem;overflow-x:auto;font-size:.82rem;line-height:1.55;margin:0 0 1.25rem}
+:not(pre)>code{background:var(--surface-2);border:1px solid var(--line);border-radius:.3rem;
+  padding:.08em .35em;font-size:.86em}
+table{width:100%;border-collapse:collapse;font-size:.9rem;margin:0 0 1.25rem;display:block;overflow-x:auto}
+th,td{text-align:left;padding:.5rem .7rem;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:ui-monospace,monospace;font-size:.72rem;text-transform:uppercase;
+  letter-spacing:.06em;color:var(--ink-subtle);font-weight:400}
+ul,ol{margin:0 0 1rem;padding-left:1.25rem}
+li{margin:.3rem 0}
+.note{background:var(--surface-2);border:1px solid var(--line);border-left:2px solid var(--accent);
+  border-radius:.4rem;padding:.8rem 1rem;margin:0 0 1.25rem;font-size:.92rem}
+.note strong{color:var(--ink)}
+.steps{counter-reset:s;list-style:none;padding:0}
+.steps>li{counter-increment:s;position:relative;padding-left:2.2rem;margin:1.5rem 0}
+.steps>li::before{content:counter(s);position:absolute;left:0;top:.05rem;
+  width:1.5rem;height:1.5rem;border-radius:50%;background:var(--surface-2);
+  border:1px solid var(--line-strong);font-family:ui-monospace,monospace;font-size:.75rem;
+  display:flex;align-items:center;justify-content:center;color:var(--ink-muted)}
+footer{margin-top:5rem;padding-top:1.5rem;border-top:1px solid var(--line);
+  font-size:.85rem;color:var(--ink-subtle)}
+footer a{color:var(--ink-muted)}
+.tools{display:grid;gap:.75rem;margin:0 0 1.5rem}
+@media(min-width:640px){.tools{grid-template-columns:repeat(3,1fr)}}
+.tool{background:var(--surface-1);border:1px solid var(--line);border-radius:.5rem;padding:.9rem}
+.tool h4{margin:0 0 .3rem;font-size:.9rem;font-family:ui-monospace,monospace}
+.tool p{margin:0;font-size:.85rem;color:var(--ink-muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav>
+  <a href="/" class="mono">owfeed.org</a>
+  <span><a href="/cookbook/">EN</a> &nbsp;·&nbsp; <span class="here">RU</span></span>
+</nav>
+
+<p class="kicker">Кукбук</p>
+<h1>Выпустить пакет для OpenWrt</h1>
+<p class="lead">Вы написали приложение LuCI или тему. Дальше — как её собрать, доказать, что она
+работает на живом роутере, подписать и положить туда, откуда её поставят одной командой
+<code>apk add</code>. Копируйте файлы, меняйте имена, готово.</p>
+
+<h2>Три инструмента</h2>
+<div class="tools">
+  <div class="tool"><h4>owlab</h4><p>Одноразовые роутеры в Docker. Собрать пакет, поставить, проверить, что страница открывается.</p></div>
+  <div class="tool"><h4>owfeed</h4><p>Подписать пакеты и написать подписанную опись релиза. Или держать целый фид.</p></div>
+  <div class="tool"><h4>owfeed-packages</h4><p>Живой фид. Попросите взять ваш пакет — и у пользователей заработает <code>apk upgrade</code>.</p></div>
+</div>
+<p>Друг от друга они не зависят. Договорённость у них одна: каталог <code>dist/</code>, внутри —
+подкаталог на архитектуру. Всё, что заполняет его правильно, работает со всем остальным.</p>
+
+<h2>1. Собрать и проверить у себя</h2>
+<p>Нужен Docker. Больше ничего.</p>
+<pre>go install github.com/VizzleTF/owlab/cmd/owlab@latest
+
+cd my-luci-app
+owlab build --release 25.12.5      # настоящая сборка в SDK, пишет в dist/&lt;arch&gt;/
+owlab up                            # поднять роутер
+owlab install owrt2512 dist/*/*.apk
+owlab open owrt2512                 # LuCI в браузере</pre>
+
+<p>Пока идёт работа, пересборку можно вообще пропускать:</p>
+<pre>owlab sync --watch    # копирует исходники в живой роутер на каждое сохранение</pre>
+
+<p>И вся проверка одной командой — она же крутится в CI:</p>
+<pre>owlab test --release 25.12.5 --release 24.10.8 \
+  --install 'dist/*/luci-app-mine-*' \
+  --assert 'http 200 /cgi-bin/luci/admin/services/mine'</pre>
+
+<div class="note"><strong>Проверяйте обе ветки.</strong> На 25.12 пакетный менеджер apk, на
+24.10 — opkg, и совпадают они почти ни в чём. Пакет, который работает на одной, может упасть
+на другой.</div>
+
+<h2>2. Что где лежит</h2>
+<table>
+<tr><th>Файл</th><th>Зачем</th></tr>
+<tr><td><code>owlab.yaml</code></td><td>Какие роутеры поднимать. Необязателен — флаги работают и без него.</td></tr>
+<tr><td><code>Makefile</code></td><td>Ваш пакет, как его ждёт OpenWrt. <code>owlab build</code> читает именно его.</td></tr>
+<tr><td><code>dist/&lt;arch&gt;/</code></td><td>Собранные пакеты. Их пишет сборка и читает всё остальное.</td></tr>
+<tr><td><code>.github/workflows/ci.yml</code></td><td>Проверка на каждый push.</td></tr>
+<tr><td><code>.github/workflows/release.yml</code></td><td>Подпись и публикация по тегу.</td></tr>
+</table>
+
+<p>Минимальный <code>owlab.yaml</code>, если он всё-таки нужен:</p>
+<pre>version: 1
+routers:
+  - id: owrt2512
+    release: "25.12.5"
+  - id: owrt2410
+    release: "24.10.8"</pre>
+
+<div class="note"><strong>Про <code>dist/</code>.</strong> Архитектурно независимый пакет
+попадает сразу в два каталога, и это правильно: apk называет такую архитектуру
+<code>noarch</code>, opkg — <code>all</code>, и каждый артефакт лежит там, как он сам себя
+называет.
+<pre style="margin:.6rem 0 0">dist/
+├── noarch/my-app-1.0.0-r1.apk
+└── all/my-app_1.0.0-r1_all.ipk</pre></div>
+
+<h2>3. GitHub Actions</h2>
+<p class="kicker">.github/workflows/ci.yml</p>
+<pre>name: ci
+on: [push, pull_request]
+permissions: { contents: read }
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: { release: ["25.12.5", "24.10.8"] }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: VizzleTF/owlab/setup@v0.2.0
+      - run: owlab build --release ${{ matrix.release }}
+      - uses: VizzleTF/owlab/action@v0.2.0
+        with:
+          releases: ${{ matrix.release }}
+          install: dist/*/my-app-*
+          assert: |
+            package my-app
+            http 200 /cgi-bin/luci/admin/services/mine</pre>
+
+<p>Ключей в этом job нет вообще — поэтому его безопасно гонять на pull request из форка.</p>
+
+<p class="kicker">.github/workflows/release.yml</p>
+<pre>name: release
+on:
+  push: { tags: ["v*"] }
+permissions: { contents: read }
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: VizzleTF/owlab/setup@v0.2.0
+      - uses: VizzleTF/owfeed/setup@v0.1.5
+
+      - run: owlab build --release 25.12.5
+      - run: owlab build --release 24.10.8
+
+      - name: Подписать и написать манифест
+        env: { OWFEED_RELEASE_KEY: ${{ secrets.RELEASE_KEY }} }
+        run: owfeed release --repo ${{ github.repository }} --tag ${{ github.ref_name }}
+
+      - run: gh release create "${{ github.ref_name }}" --generate-notes
+             dist/*/*.apk dist/*/*.ipk dist/manifest.txt*
+        env: { GH_TOKEN: ${{ github.token }} }</pre>
+
+<p>Ключ делается один раз и кладётся в секреты репозитория:</p>
+<pre>owfeed keygen --usign -o release.key
+gh secret set RELEASE_KEY &lt; release.key
+git add release.key.pub &amp;&amp; git commit -m "the public half"</pre>
+
+<div class="note"><strong>Публичную половину держите в репозитории.</strong> По ней кто угодно —
+и фид в том числе — проверяет, что релиз действительно ваш. Приватная не покидает секрет.</div>
+
+<h2>4. GitLab CI</h2>
+<p>Те же три команды, другой файл. Оба инструмента — один статический бинарь, ставить нечего:</p>
+<pre>build:
+  image: docker:27
+  services: [docker:27-dind]
+  variables: { DOCKER_HOST: tcp://docker:2375, DOCKER_TLS_CERTDIR: "" }
+  script:
+    - wget -qO owlab https://github.com/VizzleTF/owlab/releases/latest/download/owlab-linux-amd64
+    - wget -qO owfeed https://github.com/VizzleTF/owfeed/releases/latest/download/owfeed-linux-amd64
+    - chmod +x owlab owfeed &amp;&amp; export PATH="$PWD:$PATH"
+    - owlab build --release 25.12.5
+    - owlab test --release 25.12.5 --install 'dist/*/my-app-*'
+  artifacts:
+    paths: [dist/]
+
+release:
+  needs: [build]
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    - wget -qO owfeed https://github.com/VizzleTF/owfeed/releases/latest/download/owfeed-linux-amd64
+    - chmod +x owfeed
+    - export OWFEED_RELEASE_KEY="$RELEASE_KEY"
+    - ./owfeed release --repo "$CI_PROJECT_PATH" --tag "$CI_COMMIT_TAG"</pre>
+
+<p><code>owfeed release</code> сам подхватывает <code>CI_PROJECT_PATH</code> и
+<code>CI_COMMIT_TAG</code>, так что флаги выше — только ради явности.</p>
+
+<h2>5. Попасть в фид</h2>
+<p>Теперь пакет можно поставить из релиза. Чтобы у пользователей заработал ещё и
+<code>apk upgrade</code>, попросите
+<a href="https://github.com/VizzleTF/owfeed-packages">owfeed-packages</a> взять его к себе.</p>
+
+<ol class="steps">
+<li><strong>Выпустите релиз с подписанным манифестом.</strong> Это шаг <code>owfeed release</code>
+выше. Фид проверяет его до того, как что-либо тронет.</li>
+<li><strong>Откройте issue</strong> по шаблону <em>Request package publication</em>. Укажите
+репозиторий, тег, свой публичный ключ и его id.</li>
+<li><strong>Бот проверит за минуту</strong> — что релиз существует, что манифест сходится с
+ключом, который вы называете своим, и что формат читаемый. Если что-то не так, он скажет что
+именно.</li>
+<li><strong>Ключ смотрит человек.</strong> Это единственный ручной шаг, и обойти его нельзя:
+добавление ключа — и есть всё решение о доверии.</li>
+<li><strong>Дальше автоматика.</strong> Каждый ваш новый тег подхватывается в течение часа и
+приезжает в фид без вашего участия.</li>
+</ol>
+
+<div class="note"><strong>Почему манифест важен.</strong> Есть манифест — обновления приезжают
+без человека. Нет, только файлы — каждое обновление ждёт человека, потому что подпись на файлах
+не говорит, какие файлы входят в релиз.</div>
+
+<h2>6. Уже есть пакет на 24.10? Добавьте 25.12</h2>
+<p>Типичный случай: <code>.ipk</code>, который годами работает, и пользователи на 25.12,
+которые просят apk. Портировать ничего не нужно.</p>
+
+<pre>owlab build --release 25.12.5     # тот же Makefile, на выходе apk
+owlab test  --release 25.12.5 --install 'dist/*/my-app-*'</pre>
+
+<p>Собралось и страница открывается — всё, публикуйте обе линии из одного релизного job, как в
+разделе 3. Обычно стоит проверить две вещи:</p>
+
+<table>
+<tr><th>Что</th><th>Почему</th></tr>
+<tr><td><code>conffiles</code></td><td>Каждый <code>/etc/config/*</code>, который везёт пакет,
+обязан быть объявлен — иначе обновление затрёт настройки пользователя. apk относится к этому
+строже, чем opkg.</td></tr>
+<tr><td><code>arch: all</code></td><td>apk отвергает <code>all</code> как неустановимое.
+Пишите <code>LUCI_PKGARCH:=all</code> и дайте сборке перевести — так делает и собственная
+упаковка OpenWrt.</td></tr>
+</table>
+
+<p>Если ваш пакет — тема, приложение, скрипт или статический бинарь, SDK не нужен вовсе:
+<code>owfeed build</code> пакует уже разложенный каталог за секунды, вместо того чтобы качать
+тулчейн.</p>
+
+<h2>7. Что делают пользователи</h2>
+<p>Когда пакет в фиде, вся инструкция выглядит так — её стоит положить в свой README:</p>
+<pre># OpenWrt 25.12 и новее
+apk add ca-bundle libustream-mbedtls
+wget https://vizzletf.github.io/owfeed-packages/owfeed-packages.pem \
+  -O /etc/apk/keys/owfeed-packages.pem
+echo "https://vizzletf.github.io/owfeed-packages/releases/25.12/$(cat /etc/apk/arch)/packages.adb" \
+  &gt; /etc/apk/repositories.d/owfeed-packages.list
+apk update &amp;&amp; apk add my-app</pre>
+
+<div class="note"><strong>Скажите им не ставить файл напрямую.</strong>
+<code>apk add ./my-app.apk</code> пишет в <code>/etc/apk/world</code> пин на хеш файла, пин
+переживает sysupgrade, и после этого пакет уже никогда не обновится из фида.</div>
+
+<footer>
+<p>Справочно: <a href="https://github.com/VizzleTF/owlab">owlab</a> ·
+<a href="https://github.com/VizzleTF/owfeed">owfeed</a> ·
+<a href="https://github.com/VizzleTF/owfeed-packages">owfeed-packages</a> ·
+<a href="https://github.com/VizzleTF/owfeed/blob/main/docs/ECOSYSTEM.md">как эти три связаны</a></p>
+<p>Живой пример целиком:
+<a href="https://github.com/VizzleTF/luci-theme-footstrap">luci-theme-footstrap</a>.</p>
+</footer>
+
+</div>
+</body>
+</html>

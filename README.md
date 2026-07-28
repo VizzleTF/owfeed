@@ -8,6 +8,9 @@ and later, opkg for 24.10 and earlier — so your users run three lines and `apk
 A noarch package across all 35 architectures — built, signed, indexed, laid out — takes ~25 seconds.
 The status quo is 35 SDK builds.
 
+**New here?** The [cookbook](https://owfeed.org/cookbook/) walks the whole path — build a package,
+test it on a real router, sign it, get it into a feed — with files you can copy.
+
 ---
 
 ## Install

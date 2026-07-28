@@ -16,6 +16,7 @@ on:
     branches: [main]
     paths:
       - 'schema/**'
+      - 'cookbook/**'
       - 'docs/**'
       - 'README.md'
       - 'README_ru.md'
@@ -53,6 +54,7 @@ jobs:
           set -eu
           mkdir -p site/schema site/docs
           cp schema/v1.json site/schema/v1.json
+          cp -r cookbook site/cookbook
           cp docs/*.md site/docs/
           cp README.md README_ru.md site/docs/
 
@@ -77,7 +79,9 @@ jobs:
           <p class="lead">A signed OpenWrt package feed from a directory. apk for 25.12 and later,
           opkg for 24.10 and earlier.</p>
           <ul>
-            <li><a href="/schema/v1.json"><code>schema/v1.json</code></a> — the
+            <li><a href="/cookbook/"><strong>Cookbook</strong></a> — build, test, sign and publish an
+                OpenWrt package, step by step (<a href="/cookbook/ru/">по-русски</a>)</li>
+          <li><a href="/schema/v1.json"><code>schema/v1.json</code></a> — the
                 <code>owfeed.yml</code> schema, generated from the code</li>
             <li><a href="https://github.com/VizzleTF/owfeed">owfeed</a> — build, sign, index, publish</li>
             <li><a href="https://github.com/VizzleTF/owlab">owlab</a> — develop and prove a package works</li>
