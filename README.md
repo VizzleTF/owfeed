@@ -261,6 +261,14 @@ owfeed smoke           # installs the built feed on a real OpenWrt image
 `doctor` proves the tree is coherent. This proves a router accepts it — following your own published
 snippet, and failing if `apk` asks for `--allow-untrusted`. They are different claims.
 
+**This is not [owlab](https://github.com/VizzleTF/owlab), and does not use it.** owlab, by the same
+author, is the development cycle: several releases running side by side for as long as you are
+working, sources syncing into them, LuCI open in a browser. `owfeed smoke` is one gate before a
+publish — one architecture, one install, one answer, then gone. The two are independent on purpose:
+making a publishing tool depend on a development tool would make "will this feed install" depend on
+whether owlab was installed correctly, for the sake of sharing some Docker invocation. Develop with
+owlab if you want to; publish with owfeed either way.
+
 ## I want to check what is already live
 
 ```sh
