@@ -40,9 +40,9 @@ feed, or released binaries — not by reading the code.
 - **The intake funnel** answers correctly when run by hand. No third party has used
   it yet, so the first genuine request is still the first genuine test.
 - **`feed.yml` in `dry-run` mode**, and its `digest` / `published` / `page-url`
-  outputs. The YAML parses and the steps are the ones `owfeed-packages` runs
-  today by hand, but no repository calls it in that mode yet. It becomes real when
-  `owfeed-packages` migrates, which waits on the release below.
+  outputs. `owfeed-packages` calls it on every pull request as of v0.1.6, so the
+  first real run is the next pull request opened there — most likely one the hourly
+  update bot opens by itself.
 - **The nightly cross-check** (`.github/workflows/crosscheck.yml`). The comparison
   was run locally against both tools and behaves in both directions; what has not
   happened yet is a scheduled run on a runner.
@@ -52,9 +52,10 @@ feed, or released binaries — not by reading the code.
   reads `secrets.OWFEED_SIGN_KEY` with the `sign-key` input as fallback — so an
   existing caller is unaffected either way. What one live run still has to settle
   is *whose* environment resolves, the caller's or owfeed's, since the run belongs
-  to the caller and no such environment exists in owfeed. Until that run happens,
-  `owfeed-packages` keeps its hand-written `publish.yml` rather than move a
-  signing key on the strength of a documentation reading.
+  to the caller and no such environment exists in owfeed. Nothing calls the publish
+  half yet: `owfeed-packages` moved its pull-request check across and kept its
+  hand-written `publish.yml`, so the question gets answered by a deliberate run
+  rather than by a feed that stopped publishing.
 
 ## Not built, and why
 
