@@ -7,6 +7,7 @@ import (
 
 	"github.com/VizzleTF/owfeed/internal/apk"
 	"github.com/VizzleTF/owfeed/internal/config"
+	"github.com/VizzleTF/owfeed/internal/lock"
 	"github.com/VizzleTF/owfeed/internal/usign"
 
 	"github.com/VizzleTF/owfeed/internal/doctor"
@@ -45,46 +46,12 @@ func (a *app) doctor(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	// The apk toolchain is only needed to read an apk index. A feed that publishes
-	// only for 24.10 should not have to download an SDK to be checked.
-	var tool *apk.Tool
-	if usesFormat(c, config.FormatAPK) {
-		if tool, err = a.tool(ctx, l); err != nil {
-			return err
-		}
-	}
-
-	var usignPub *usign.PublicKey
-	if c.Signing.UsignKey != "" {
-		k, err := a.usignKey(c)
-		if err != nil {
-			return err
-		}
-		if usignPub, err = usign.ParsePublicKey(k.MarshalPublic("")); err != nil {
-			return wrap(exitKey, err)
-		}
-	}
-
-	key, err := a.signingKey(c)
+	in, err := a.doctorInput(ctx, c, l, out, *requireOrigin)
 	if err != nil {
 		return err
 	}
-	id, err := keys.IdentityOf(&key.PublicKey)
-	if err != nil {
-		return wrap(exitKey, err)
-	}
 
-	report, err := doctor.Run(ctx, doctor.Input{
-		Config:        c,
-		Lock:          l,
-		Tool:          tool,
-		Root:          a.root(),
-		OutDir:        out,
-		Identity:      id,
-		PubKeyName:    c.Feed.Name + ".pem",
-		UsignKey:      usignPub,
-		RequireOrigin: *requireOrigin,
-	})
+	report, err := doctor.Run(ctx, in)
 	if err != nil {
 		// A check that cannot run counts as failed. A green report that means
 		// "nothing was looked at" is worse than a red one.
@@ -113,4 +80,51 @@ func usesFormat(c *config.Config, format string) bool {
 		}
 	}
 	return false
+}
+
+// doctorInput assembles what the checks look at. Both `doctor` and `publish` run
+// them, and building the input twice is how the ipk half of a feed came to be
+// published without its index ever being verified.
+func (a *app) doctorInput(ctx context.Context, c *config.Config, l *lock.Lock, out string, requireOrigin bool) (doctor.Input, error) {
+	// The apk toolchain is only needed to read an apk index. A feed that publishes
+	// only for 24.10 should not have to download an SDK to be checked.
+	var tool *apk.Tool
+	var err error
+	if usesFormat(c, config.FormatAPK) {
+		if tool, err = a.tool(ctx, l); err != nil {
+			return doctor.Input{}, err
+		}
+	}
+
+	var usignPub *usign.PublicKey
+	if c.Signing.UsignKey != "" {
+		k, err := a.usignKey(c)
+		if err != nil {
+			return doctor.Input{}, err
+		}
+		if usignPub, err = usign.ParsePublicKey(k.MarshalPublic("")); err != nil {
+			return doctor.Input{}, wrap(exitKey, err)
+		}
+	}
+
+	key, err := a.signingKey(c)
+	if err != nil {
+		return doctor.Input{}, err
+	}
+	id, err := keys.IdentityOf(&key.PublicKey)
+	if err != nil {
+		return doctor.Input{}, wrap(exitKey, err)
+	}
+
+	return doctor.Input{
+		Config:        c,
+		Lock:          l,
+		Tool:          tool,
+		Root:          a.root(),
+		OutDir:        out,
+		Identity:      id,
+		PubKeyName:    c.Feed.Name + ".pem",
+		UsignKey:      usignPub,
+		RequireOrigin: requireOrigin,
+	}, nil
 }

@@ -9,7 +9,6 @@ import (
 	"github.com/VizzleTF/owfeed/internal/config"
 	"github.com/VizzleTF/owfeed/internal/doctor"
 	"github.com/VizzleTF/owfeed/internal/index"
-	"github.com/VizzleTF/owfeed/internal/keys"
 )
 
 // publish gates a built tree on the checks that matter and then hands it to the
@@ -51,26 +50,17 @@ func (a *app) publish(ctx context.Context, args []string) error {
 		return fail(exitPublish, "publish target %q is not implemented yet", name)
 	}
 
-	tool, err := a.tool(ctx, l)
+	// The same input the `doctor` command builds. Assembling it separately here is
+	// exactly how an ipk index once reached publication unverified.
+	in, err := a.doctorInput(ctx, c, l, out, requireOriginFor(c))
 	if err != nil {
 		return err
-	}
-	key, err := a.signingKey(c)
-	if err != nil {
-		return err
-	}
-	id, err := keys.IdentityOf(&key.PublicKey)
-	if err != nil {
-		return wrap(exitKey, err)
 	}
 
 	// There is no flag to publish an unsigned or unchecked tree. Every existing
 	// feed's deploy step is an unconditional upload, and the failures that reach
 	// subscribers are the ones nothing looked for.
-	report, err := doctor.Run(ctx, doctor.Input{
-		Config: c, Lock: l, Tool: tool, Root: a.root(),
-		OutDir: out, Identity: id, PubKeyName: c.Feed.Name + ".pem",
-	})
+	report, err := doctor.Run(ctx, in)
 	if err != nil {
 		return wrap(exitCheck, err)
 	}
@@ -93,7 +83,7 @@ func (a *app) publish(ctx context.Context, args []string) error {
 		return nil
 	}
 
-	a.logf("%s passed %d checks, signed by key %s", out, report.Checked, id)
+	a.logf("%s passed %d checks, signed by key %s", out, report.Checked, in.Identity)
 	a.logf("")
 	a.logf("GitHub Pages deploys an artifact rather than a branch, so the upload belongs to")
 	a.logf("the workflow. Point it at this directory:")
@@ -128,3 +118,10 @@ func requireTreeFiles(out, feedName string) error {
 	}
 	return nil
 }
+
+// requireOriginFor decides whether every package must say where it came from.
+//
+// It is always on at publish time. A package that does not name its upstream is one
+// a user cannot trace back to whoever wrote it, and a feed is the one place that
+// information can still be attached.
+func requireOriginFor(*config.Config) bool { return true }
