@@ -53,6 +53,17 @@ type Options struct {
 	Key *usign.PrivateKey
 	// Now is the release timestamp; zero means now.
 	Now time.Time
+
+	// SignAlso are files beside the packages that get a detached signature too,
+	// without entering the manifest -- an installer script, most often.
+	//
+	// They are not manifest entries because the manifest is an inventory of the
+	// packages a feed ingests, and a feed has no use for an installer. The
+	// signature is for a person: nothing can verify a script during `wget | sh`,
+	// since the script is the first thing to arrive, so it is not a link in the
+	// install chain. It is there so a careful admin can check what they are about
+	// to run as root, out of band, before running it.
+	SignAlso []string
 }
 
 // Result describes what was produced.
@@ -112,11 +123,23 @@ func Build(opts Options) (*Result, error) {
 	// The manifest's signature is the one a manifest-aware reader needs. The
 	// per-package ones stay anyway: a consumer already in the field may be fetching
 	// a single asset and know nothing about manifests.
-	signed := make([]string, 0, len(pkgs)+1)
+	signed := make([]string, 0, len(pkgs)+1+len(opts.SignAlso))
 	for _, p := range pkgs {
 		signed = append(signed, p.path)
 	}
 	signed = append(signed, manifest)
+	// Named explicitly rather than globbed: signing whatever happens to be lying
+	// beside the packages would put a signature on a build leftover and say it was
+	// released.
+	for _, extra := range opts.SignAlso {
+		if !filepath.IsAbs(extra) {
+			extra = filepath.Join(opts.Dir, extra)
+		}
+		if _, err := os.Stat(extra); err != nil {
+			return nil, fmt.Errorf("--sign-also %s: %w", extra, err)
+		}
+		signed = append(signed, extra)
+	}
 
 	comment := fmt.Sprintf("%s %s", opts.Repo, opts.Tag)
 	for _, f := range signed {

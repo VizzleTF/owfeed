@@ -2,6 +2,25 @@
 
 Dates are when the tag was cut. Anything not listed is documentation or tests.
 
+## Unreleased
+
+- `owfeed release --sign-also FILE` signs a file published beside the packages —
+  an installer script, most often — with the same key, without adding it to the
+  manifest. The manifest is an inventory of packages a feed ingests, and a feed
+  has no use for an installer; the signature is for a person checking what they
+  are about to run as root, out of band. Repeatable. This is what lets a package
+  repository drop its own usign loop entirely.
+- `build: sdk` is refused by design rather than reported as unimplemented, and
+  the error points at owlab and at `docs/artifact-contract.md`. owfeed packages;
+  it does not compile.
+- A JSON Schema for `owfeed.yml`, generated from `internal/config` and published
+  at `https://owfeed.org/schema/v1.json`. It describes shape, not the validator's
+  rules, and marks the keys that parse but are refused. `owfeed init` gets its
+  `$schema` modeline back once that URL answers.
+- **Docs:** `docs/ECOSYSTEM.md` states the boundary between owlab and owfeed, and
+  `docs/artifact-contract.md` and `docs/manifest-format.md` write down the two
+  formats that cross it. Both had more than one consumer and no specification.
+
 ## v0.1.4 — 2026-07-28
 
 - A feed that carries only other people's packages and builds nothing itself is now

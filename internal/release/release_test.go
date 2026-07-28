@@ -200,3 +200,50 @@ func TestASingleArchitectureKeepsItsName(t *testing.T) {
 		}
 	}
 }
+
+// An installer published beside the packages gets a signature but no manifest
+// entry. It is not a package a feed ingests, and the signature is for a person
+// checking what they are about to run as root -- not for the install chain, which
+// cannot verify a script that arrives first.
+func TestSignAlsoSignsWithoutEnteringTheManifest(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "noarch/luci-theme-demo-1.0-r1.apk", "apk")
+	write(t, dir, "install.sh", "#!/bin/sh\n")
+
+	res, err := Build(Options{
+		Dir: dir, Repo: "VizzleTF/demo", Tag: "v1.0", Key: key(t),
+		SignAlso: []string{"install.sh"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, "install.sh.sig")); err != nil {
+		t.Errorf("install.sh was not signed: %v", err)
+	}
+	body, err := os.ReadFile(res.Manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), "install.sh") {
+		t.Errorf("install.sh entered the manifest:\n%s", body)
+	}
+}
+
+// A named file that is not there is a typo in a release workflow, and a release
+// missing the installer it advertises is worse than a red build.
+func TestSignAlsoRefusesAMissingFile(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "noarch/luci-theme-demo-1.0-r1.apk", "apk")
+
+	_, err := Build(Options{
+		Dir: dir, Repo: "VizzleTF/demo", Tag: "v1.0", Key: key(t),
+		SignAlso: []string{"install.sh"},
+	})
+	if err == nil {
+		t.Fatal("expected an error naming the missing file")
+	}
+	if !strings.Contains(err.Error(), "install.sh") {
+		t.Errorf("error does not name the file: %v", err)
+	}
+}

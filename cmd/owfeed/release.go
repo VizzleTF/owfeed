@@ -12,6 +12,12 @@ import (
 	"github.com/VizzleTF/owfeed/internal/usign"
 )
 
+// stringList collects a repeatable flag.
+type stringList []string
+
+func (s *stringList) String() string     { return strings.Join(*s, ", ") }
+func (s *stringList) Set(v string) error { *s = append(*s, v); return nil }
+
 // release is the author's side of a feed that carries other people's work: it turns
 // a directory of built packages into something a feed can consume without trusting
 // the hosting service — an inventory of what belongs to this release, signed.
@@ -21,6 +27,8 @@ func (a *app) release(args []string) error {
 	keySpec := fs.String("key", "env:OWFEED_RELEASE_KEY", "usign signing key, as env:VAR or file:PATH")
 	repo := fs.String("repo", envAny("GITHUB_REPOSITORY", "CI_PROJECT_PATH"), "the repository this release belongs to")
 	tag := fs.String("tag", envAny("GITHUB_REF_NAME", "CI_COMMIT_TAG"), "the release tag")
+	var signAlso stringList
+	fs.Var(&signAlso, "sign-also", "additional file to sign with the same key; repeatable")
 	if err := fs.Parse(args); err != nil {
 		return wrap(exitConfig, err)
 	}
@@ -43,7 +51,7 @@ func (a *app) release(args []string) error {
 	}
 
 	res, err := release.Build(release.Options{
-		Dir: dir, Repo: *repo, Tag: *tag, Key: key, Now: releaseDate(),
+		Dir: dir, Repo: *repo, Tag: *tag, Key: key, Now: releaseDate(), SignAlso: signAlso,
 	})
 	if err != nil {
 		return wrap(exitBuild, err)
