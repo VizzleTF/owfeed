@@ -277,12 +277,13 @@ looks → human review of the key addition, enforced by CODEOWNERS → one PR ad
 issue proves the release is internally coherent; it is not trust. Trust happens exactly
 once, when the key is committed.
 
-Of that, the last two steps exist. There is no request template and no intake workflow yet,
-so a third party today reads CONTRIBUTING and opens a pull request by hand. `CODEOWNERS`
-names `keys/` but is not enforced: a review requirement needs a reviewer, and with one
-maintainer the author of a pull request cannot approve it — so the branch rule would block
-every key addition permanently rather than gate it. It becomes a mechanism on the day there
-is a second maintainer.
+All of it exists except the enforcement on the last human step. `CODEOWNERS` names `keys/`
+but no branch rule requires the review: a review requirement needs a reviewer, and with one
+maintainer the author of a pull request cannot approve their own — so the rule would block
+every key addition permanently rather than gate it. Auto-merge cannot reach `keys/` anyway,
+since it is only ever requested on pull requests the update job itself opened and that job
+writes one `upstream.sh`. The review becomes a mechanism on the day there is a second
+maintainer.
 
 Conformance tiers follow from **what the signature covers**, not from how hard the author
 tried:
