@@ -44,6 +44,9 @@ type Request struct {
 	// inputs produce the same package bytes. Without it the payload carries the
 	// checkout's mtimes, which differ between a laptop and a fresh CI clone.
 	SourceDateEpoch time.Time
+	// Format is "apk" or "ipk". 24.10 and earlier are opkg, and a maintainer who
+	// ships only apk has abandoned everyone who has not upgraded yet.
+	Format string
 }
 
 // Result describes a built package.
@@ -90,6 +93,10 @@ func Build(ctx context.Context, tool *apk.Tool, req Request) (*Result, error) {
 		return nil, err
 	}
 	defer os.RemoveAll(stage)
+
+	if req.Format == FormatIPK {
+		return buildIPK(req, arch, outDir)
+	}
 
 	payload := filepath.Join(stage, payloadDir)
 	files := ExpandArch(p.Files, arch)
@@ -153,6 +160,12 @@ func ExpandArch(path, arch string) string {
 func PackageFileName(name, version string) string {
 	return name + "-" + version + ".apk"
 }
+
+// Package formats. apk is 25.12 and later; ipk is 24.10 and earlier.
+const (
+	FormatAPK = "apk"
+	FormatIPK = "ipk"
+)
 
 const (
 	payloadDir = "payload"

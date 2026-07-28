@@ -20,6 +20,7 @@ func (a *app) build(ctx context.Context, args []string) error {
 	fs.SetOutput(a.err)
 	out := fs.String("o", defaultDist, "directory to write packages into")
 	only := fs.String("package", "", "build only this package")
+	format := fs.String("format", build.FormatAPK, "apk for 25.12 and later, ipk for 24.10 and earlier")
 	if err := fs.Parse(args); err != nil {
 		return wrap(exitConfig, err)
 	}
@@ -67,6 +68,7 @@ func (a *app) build(ctx context.Context, args []string) error {
 				Arch:            arch,
 				OutDir:          *out,
 				SourceDateEpoch: epoch,
+				Format:          *format,
 			})
 			if err != nil {
 				return wrap(exitBuild, err)

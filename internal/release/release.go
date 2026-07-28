@@ -79,7 +79,7 @@ func Build(opts Options) (*Result, error) {
 	fmt.Fprintf(&b, "version %s\n", strings.TrimPrefix(opts.Tag, "v"))
 	fmt.Fprintf(&b, "date %s\n", now.UTC().Format(time.RFC3339))
 	for _, p := range pkgs {
-		fmt.Fprintf(&b, "pkg %s %s %s %d %s\n", p.name, p.arch, p.file, p.size, p.sum)
+		fmt.Fprintf(&b, "pkg %s %s %s %s %d %s\n", p.name, p.format, p.arch, p.file, p.size, p.sum)
 	}
 
 	manifest := filepath.Join(opts.Dir, ManifestName)
@@ -111,8 +111,8 @@ func Build(opts Options) (*Result, error) {
 }
 
 type pkg struct {
-	name, arch, file, path, sum string
-	size                        int64
+	name, format, arch, file, path, sum string
+	size                                int64
 }
 
 // packages walks the per-architecture directories `owfeed build` writes.
@@ -132,7 +132,9 @@ func packages(dir string) ([]pkg, error) {
 			return nil, err
 		}
 		for _, f := range files {
-			if !strings.HasSuffix(f.Name(), ".apk") {
+			// Both lines in one release: 25.12 installs the .apk, 24.10 the .ipk, and
+			// a maintainer who ships only one has abandoned half their users.
+			if !strings.HasSuffix(f.Name(), ".apk") && !strings.HasSuffix(f.Name(), ".ipk") {
 				continue
 			}
 			path := filepath.Join(dir, arch, f.Name())
@@ -145,8 +147,8 @@ func packages(dir string) ([]pkg, error) {
 				return nil, err
 			}
 			out = append(out, pkg{
-				name: packageName(f.Name()), arch: arch, file: f.Name(),
-				path: path, sum: sum, size: st.Size(),
+				name: packageName(f.Name()), format: strings.TrimPrefix(filepath.Ext(f.Name()), "."),
+				arch: arch, file: f.Name(), path: path, sum: sum, size: st.Size(),
 			})
 		}
 	}
@@ -159,13 +161,13 @@ func packages(dir string) ([]pkg, error) {
 	return out, nil
 }
 
-// packageName recovers a package's name from its filename. apk builds the filename
-// as <name>-<version>.apk and a version always starts with a digit, so the seam is
-// the last dash followed by one.
+// packageName recovers a package's name from its filename. The two formats spell it
+// differently — <name>-<version>.apk and <name>_<version>_<arch>.ipk — but a version
+// always starts with a digit, so the seam is the last separator followed by one.
 func packageName(file string) string {
-	base := strings.TrimSuffix(file, ".apk")
+	base := strings.TrimSuffix(strings.TrimSuffix(file, ".apk"), ".ipk")
 	for i := len(base) - 1; i > 0; i-- {
-		if base[i-1] == '-' && base[i] >= '0' && base[i] <= '9' {
+		if (base[i-1] == '-' || base[i-1] == '_') && base[i] >= '0' && base[i] <= '9' {
 			return base[:i-1]
 		}
 	}
