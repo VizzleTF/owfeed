@@ -93,6 +93,76 @@ They appear in the index without being passed to `--info` (and `--info` rejects 
     file-size: 239
 ```
 
+## `mkpkg` records unknown file owners as `nobody`, not as root
+
+**This is the most consequential finding here, because it is silent.** `mkpkg` stores
+each file's owner *by name*, resolving the numeric uid through the passwd file under
+apk's root. An id with no entry there does not fall back to root:
+
+```c
+/* src/io.c, apk_id_cache_resolve_user */
+if (ci) return APK_BLOB_PTR_LEN(ci->name, ci->len);
+if (uid == 0) return APK_BLOB_STRLIT("root");
+return APK_BLOB_STRLIT("nobody");
+```
+
+So a package built by an ordinary user records every file as `nobody:nobody`, and the
+router chowns them that way on install. Nothing warns, at build time or at install time.
+
+```sh
+chown -R 1001:1001 root/
+$APK mkpkg --info name:d --info version:1.0-r1 --info arch:noarch --files root --output plain.apk
+$APK adbdump plain.apk | grep -E 'user|group' | sort -u
+#   group: nobody
+#   user: nobody
+```
+
+OpenWrt does not hit this because `package-pack.mk` runs `mkpkg` under `$(FAKEROOT)`.
+`runas.so`, which the SDK's apk wrapper sets as `LD_PRELOAD`, is **not** a fakeroot: its
+only exported behaviour is rewriting `argv[0]` from `RUNAS_ARG0`.
+
+The fix needs no extra tooling. Point apk's `--root` at a directory whose `etc/passwd`
+calls the building uid `root`:
+
+```sh
+mkdir -p idroot/etc
+printf 'root:x:1001:1001:root:/root:/bin/sh\n' > idroot/etc/passwd
+printf 'root:x:1001:\n'                        > idroot/etc/group
+$APK --root idroot mkpkg --info name:d --info version:1.0-r1 --info arch:noarch \
+     --files root --output rooted.apk
+$APK adbdump rooted.apk | grep -E 'user|group' | sort -u
+#   group: root
+#   user: root
+```
+
+`--files` and `--output` stay relative to the working directory; `--root` affects only
+id resolution here, and apk writes nothing into that directory.
+
+## `mkpkg` records extended attributes by default
+
+`--xattrs` defaults to on, which on macOS ships the build host's residue to routers:
+
+```
+  - name: etc
+    acl:
+      mode: 0755
+      user: root
+      group: root
+      xattrs: # 1 items
+        - com.apple.provenance=01020013ed3d264d9d6efa
+```
+
+`com.apple.provenance` is stamped by macOS on downloaded files. Besides being
+meaningless on OpenWrt, it makes the same inputs produce different package bytes on
+macOS and on Linux. `--no-xattrs` removes them.
+
+## `mkpkg` does not stamp a build time
+
+Nothing in the output varies between two runs over identical inputs — there is no
+`build-time` field unless one is passed. The only source of non-determinism left is the
+payload's mtimes, which `mkpkg` does record, so normalising those is enough to make a
+build reproducible.
+
 ---
 
 ## Extracting a host apk from the SDK
@@ -156,9 +226,11 @@ $ docker run --rm --platform linux/amd64 -v "$PWD/min":/opt/apk:ro alpine:3 \
 apk-tools 3.0.5, compiled for x86_64.
 ```
 
-`LD_PRELOAD=runas.so` is also not required for `mkndx`/`mkpkg`/`adbdump` to run. It is
-kept in the extraction set anyway: it is 14 KB, and the wrapper sets it for ownership
-handling that packaging as a non-root user may depend on.
+`LD_PRELOAD=runas.so` is also not required for `mkndx`/`mkpkg`/`adbdump` to run, and it
+is not a fakeroot — its only exported symbols are `getenv`/`unsetenv` and the string
+`RUNAS_ARG0`, i.e. it rewrites `argv[0]` and nothing else. Ownership is handled the way
+described above, under `--root`. It is kept in the extraction set anyway, at 14 KB, so
+the SDK's own wrapper script still works if anyone invokes it.
 
 ### macOS needs a container
 

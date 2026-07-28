@@ -237,7 +237,24 @@ func (c *Config) validatePackages(path string) error {
 			return &Error{
 				Path: path,
 				Msg:  fmt.Sprintf("%s has no version", where),
-				Hint: "set `version:` or `version-from:` (makefile:PATH, file:PATH, or git-describe)",
+				Hint: "set `version:` or `version-from:` (makefile:PATH or file:PATH)",
+			}
+		}
+		if p.VersionFrom != "" {
+			switch scheme, _, _ := strings.Cut(p.VersionFrom, ":"); scheme {
+			case "makefile", "file":
+			case "git-describe":
+				// `git describe` produces v1.2.3-4-gabcdef, which apk cannot parse,
+				// and every mapping onto apk's grammar is a decision about which of
+				// two builds counts as newer. Making that decision silently is worse
+				// than not making it.
+				return &Error{
+					Path: path,
+					Msg:  fmt.Sprintf("%s uses version-from: git-describe, which is not implemented yet", where),
+					Hint: "git describe output is not an apk version; set `version:` explicitly, or point version-from at a Makefile or a file holding one",
+				}
+			default:
+				return errf(path, "%s.version-from %q is not a version source; use makefile:PATH or file:PATH", where, p.VersionFrom)
 			}
 		}
 		for _, cf := range p.Conffiles {
