@@ -2,7 +2,7 @@
 
 Dates are when the tag was cut. Anything not listed is documentation or tests.
 
-## Unreleased
+## v0.1.5 — 2026-07-28
 
 - `owfeed sign` no longer requires a feed config. It takes `--key`, and resolves the
   apk tool from the newest point release when no lockfile names one, so an author
