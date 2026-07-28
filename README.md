@@ -1,98 +1,122 @@
 # owfeed
 
-Build, sign and publish an **apk package feed for OpenWrt 25.12+** — so your users run three lines
-and `apk add` just works.
+One binary. Turns a directory into a signed apk feed for **OpenWrt 25.12+**, so your users run three
+lines and `apk add` works.
 
-> **Status: design stage. There is no code yet.**
-> This repository currently contains a research-backed design document ([`docs/DESIGN.md`](docs/DESIGN.md)).
-> Several claims in it are explicitly marked unverified and need prototyping before implementation.
-> Do not depend on anything here yet.
+A noarch package across all 35 architectures — built, signed, indexed, laid out — takes ~25 seconds.
+The status quo is 35 SDK builds.
 
-## The problem
+---
 
-OpenWrt 25.12 replaced opkg with apk (APKv3). The index is now a binary `packages.adb`, signing moved
-from usign/ed25519 to EC prime256v1, and `ipkg-make-index.sh` — the script third-party maintainers
-used for a decade — no longer applies. There is no documentation for running your own feed.
+## I want to publish a feed
 
-The result, as of mid-2026:
+```sh
+owfeed init --url https://feed.example.org
+owfeed keygen -o ~/keys/myfeed.pem      # outside the repo. A published key cannot be revoked.
+export OWFEED_SIGN_KEY="$(cat ~/keys/myfeed.pem)"
 
-- `ERROR: <file>.ipk: v2 package format error` appears in issue trackers of a dozen unrelated projects.
-- `ERROR: <file>.apk: UNTRUSTED signature` appears in as many more, plus the LuCI "Upload Package"
-  flow ([luci#8482](https://github.com/openwrt/luci/issues/8482), open) which cannot pass
-  `--allow-untrusted` at all.
-- Maintainers answer "won't convert", "build it yourself", "stay on 24.10", or nothing.
-- The same question — *how do I host an apk feed?* — was asked on the forum in
-  [Sep 2025](https://forum.openwrt.org/t/creating-an-apk-openwrt-repository/240519) and again in
-  [Jul 2026](https://forum.openwrt.org/t/custom-feeds-package-repos-how-to-create-server/252104).
-  [openwrt#16946](https://github.com/openwrt/openwrt/issues/16946), which asked for a replacement
-  indexing tool, was closed without one.
+# edit owfeed.yml: point `files:` at a directory laid out the way it should install
 
-Every feed that does exist is a hand-rolled GitHub Actions workflow wrapping `openwrt/gh-action-sdk`
-plus a copy-pasted deploy step, with a hardcoded 36-entry architecture matrix.
-
-## What owfeed does
-
-A single Go binary — identical behaviour locally and in CI. Each stage takes a directory in and
-leaves a directory behind, with no hidden state between them, so any of them runs on its own.
-
-```
-owfeed init             scaffold owfeed.yml and .gitignore
-owfeed keygen           EC prime256v1 SEC1 keypair, correct by construction
-owfeed lock             derive the architecture matrix; never hardcode it
-owfeed build            SDK-less `apk mkpkg` from a staged rootfs
-owfeed sign             sign every .apk, not just the index
-owfeed index            fan out and build a signed packages.adb + index.json + sha256sums
-owfeed doctor           numbered checks that catch the traps below before your users do
-owfeed publish          gate the tree on those checks; refuses to publish a broken one
-owfeed install-snippet  the instructions your subscribers follow, from one source
+owfeed lock --update                    # derives the architecture list; commit it
+owfeed build && owfeed sign && owfeed index
+owfeed doctor
 ```
 
-One noarch package across all 35 architectures — built, signed, indexed and laid out for
-publication — takes about 25 seconds on a laptop, against 35 SDK builds today. The result installs on
-`openwrt/rootfs:x86-64-25.12.4` with `apk add`, no `--allow-untrusted`.
+`out/` is now the feed. Upload it.
 
-Still to come: SDK builds, a GitHub Action and reusable workflow, Cloudflare R2 and rsync targets,
-`verify` against a live URL, `smoke` inside `openwrt/rootfs`, and an SBOM.
+## I want to ship a new version
 
-### Things it refuses to let you get wrong
+Bump `version:` in `owfeed.yml`, then:
 
-Each of these has burned a real maintainer, and each is a `doctor` gate:
+```sh
+owfeed build && owfeed sign && owfeed index && owfeed doctor
+```
+
+## I want to add a package
+
+Add another entry under `packages:`. Same four commands.
+
+## I want to tell users how to install it
+
+```sh
+owfeed install-snippet             # markdown, paste into your README
+owfeed install-snippet --format sh # just the commands
+```
+
+Do not write your own. `doctor` compares your README against this output, because a feed whose
+documented URL 404s is a live bug in a major feed right now.
+
+## I want this in CI
+
+```yaml
+- run: owfeed --frozen-lock build && owfeed sign && owfeed index
+  env:
+    OWFEED_SIGN_KEY: ${{ secrets.OWFEED_SIGN_KEY }}
+- run: owfeed publish            # refuses to publish a broken tree. No override flag.
+- uses: actions/upload-pages-artifact@v3
+  with: { path: out }
+- uses: actions/deploy-pages@v4
+```
+
+Put `publish` in a separate job with `environment:` so a fork PR cannot reach the key.
+
+## Upstream added an architecture
+
+```sh
+owfeed lock --update    # prints the diff; commit it
+```
+
+`--frozen-lock` fails the build until you do. What your feed covers should not change without you
+seeing it.
+
+## Something broke
+
+```sh
+owfeed doctor          # numbered findings, each says why it matters and what to do
+```
+
+---
+
+## Things that will bite you
+
+owfeed refuses each of these. Every one has burned a real maintainer.
 
 | | |
 |---|---|
-| `arch: all` | rejected by apk — must be `noarch` |
-| `-C zstd` | OpenWrt builds apk with zstd disabled; the index dies on-device |
-| PKCS#8 key | `openssl genpkey -algorithm EC` produces the wrong PEM form; only SEC1 works |
-| `~` in a version | only hex digits may follow it; `-r<n>` must be last |
-| A feed URL that redirects | apk does not follow 30x with the stock `uclient-fetch` ([openwrt#17180](https://github.com/openwrt/openwrt/issues/17180)) |
-| A missing `sysupgrade.conf` line | `/etc/apk/keys/*.pem` do **not** survive sysupgrade — the top cause of post-upgrade "UNTRUSTED signature" reports |
-| A dependency that provides `wget` | swaps the user's fetcher and breaks their `apk update` entirely ([openwrt#24270](https://github.com/openwrt/openwrt/issues/24270)) |
-| A README that drifted from the real URL | already live in a major feed today |
-| A payload staged from a source tree | `.po` files instead of compiled `.lmo` catalogues means the package installs cleanly with no translations at all |
+| `arch: all` | apk rejects it as uninstallable. Use `noarch`. |
+| PKCS#8 key | `openssl genpkey -algorithm EC` writes the wrong PEM. Only SEC1 works. |
+| `1.0~beta` | after `~` apk reads a commit hash, so only hex. Use `_beta1`. |
+| A feed URL that redirects | apk does not follow 30x ([openwrt#17180](https://github.com/openwrt/openwrt/issues/17180)). |
+| No `sysupgrade.conf` line | `/etc/apk/keys/*.pem` do **not** survive sysupgrade. Top cause of post-upgrade `UNTRUSTED signature`. |
+| Indexing before signing | signing appends bytes, so the index no longer matches the file. |
+| `/etc/config/foo` not in `conffiles:` | sysupgrade replaces the user's settings with your defaults, silently, every upgrade. |
+| `.po` files in the payload | the package installs clean and has no translations. |
+| A README that drifted | already live in a major feed today. |
 
-### Things it will tell you honestly
+## Things owfeed will not pretend
 
-- **Attended Sysupgrade will not preserve your packages.** `owut` forwards no custom repositories,
-  and the ASU server's `repository_allow_list` defaults to empty — which denies everything.
-- **apk has no revocation.** No CRL, no expiry, no kill signal. owfeed makes rotation cheap enough to
-  actually do; it does not pretend revocation exists.
-- **A key in `/etc/apk/keys` is a trust anchor for everything.** If you ship one package that people
-  install occasionally, loose signed artifacts may be the smaller ask. owfeed says so during `init`.
-- **The SDK-less path packages a staged rootfs; it does not build one.** `apk mkpkg` turns a directory
-  into a package in about a second, which is the whole point — but the directory has to be what you
-  want installed. For a LuCI package that means the CSS is already built and the `.po` catalogues are
-  already compiled to `.lmo`. owfeed will not compile them for you: the catalogue's basename is a
-  packaging decision rather than a derivable one, and getting it wrong causes a file conflict with the
-  `luci-i18n-*` package an older router still owns, which breaks the very upgrade it was meant to
-  deliver. It does refuse to package the sources, so the mistake is loud rather than silent.
+- **apk has no revocation.** No CRL, no expiry, no kill signal. owfeed makes rotation cheap; it does
+  not claim revocation exists.
+- **Your key is a trust anchor for every package name**, not just yours. If you ship one package
+  people install occasionally, signed release artifacts are a smaller ask.
+- **Attended Sysupgrade will not carry your packages across.** `owut` forwards no custom repositories
+  and the ASU server's `repository_allow_list` is empty by default, which denies everything.
+- **`build` packages a directory; it does not build one.** Your CSS must be built and your `.po`
+  already compiled to `.lmo`. owfeed refuses to package the sources rather than shipping a package
+  that looks complete and is not.
 
-## Design document
+## Not there yet
 
-[`docs/DESIGN.md`](docs/DESIGN.md) — the full design: verified invariants with sources, config schema,
-CLI surface, pipeline architecture, key rotation, milestones, and the open risks that must be
-prototyped first.
+SDK builds · GitHub Action and reusable workflow · Cloudflare R2 and rsync · `verify` against a live
+URL · `smoke` inside `openwrt/rootfs` · SBOM · key rotation commands.
 
-*Currently written in Russian; an English version will land before v0.1.*
+---
+
+## Docs
+
+- [Examples](docs/examples.md) — a real LuCI theme, end to end.
+- [Verified apk behaviour](docs/apk-behaviour.md) — what apk actually does, with reproductions.
+- [Design](docs/DESIGN.md) — the full design and the research behind it *(Russian)*.
 
 ## License
 
