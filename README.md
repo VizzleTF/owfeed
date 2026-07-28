@@ -273,6 +273,30 @@ owfeed sign                       # in the author's CI, with the author's key
 owfeed doctor --require-origin    # every package says which repository it is from
 ```
 
+### If you are the author
+
+Your repository has an ipk line and never builds an index: the feed at the far end signs that with
+its own key. What you publish is a release plus a signed inventory of it.
+
+```sh
+owfeed --frozen-lock build
+owfeed release --repo "$GITHUB_REPOSITORY" --tag "$GITHUB_REF_NAME"
+```
+
+`release` writes `manifest.txt` — what belongs to this release, each file's size and hash — and
+signs it with a usign key, the scheme OpenWrt already ships so a router can verify it with nothing
+installed. The manifest records which repository it belongs to and readers check that: a signature
+proves who wrote something, never what it is about, so without that line a manifest lifted from
+another of your releases verifies perfectly as this one.
+
+Release assets are flat, and an apk's filename carries no architecture — in a feed the architecture
+*is* the directory. A package built for twenty architectures would therefore produce twenty files
+with one name, so `release` appends the architecture where names collide, and only where they
+collide: a noarch package keeps the filename an installer already on a router looks it up by.
+
+[podkop_autoupdater](https://github.com/VizzleTF/podkop_autoupdater/blob/main/RELEASING.md) is a
+worked example, including what its signing key does and does not vouch for.
+
 [The feed's CONTRIBUTING](https://github.com/VizzleTF/owfeed-packages/blob/main/CONTRIBUTING.md)
 walks through both sides.
 
