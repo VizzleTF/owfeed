@@ -165,6 +165,7 @@ func (a *app) installSnippet(args []string) error {
 	fs.SetOutput(a.err)
 	format := fs.String("format", "md", "md or sh")
 	pkg := fs.String("package", "", "the package used in the example")
+	release := fs.String("release", "", "release line (default: the one owfeed.yml advertises)")
 	if err := fs.Parse(args); err != nil {
 		return wrap(exitConfig, err)
 	}
@@ -173,10 +174,14 @@ func (a *app) installSnippet(args []string) error {
 	if err != nil {
 		return err
 	}
-	in := snippet.Input{Config: c, Package: *pkg}
+	in := snippet.Input{Config: c, Package: *pkg, Release: *release}
+	line := *release
+	if line == "" {
+		line = c.DefaultRelease().Line
+	}
 	// An ipk line's snippet names the key by its id, because that is the filename
 	// opkg looks it up under.
-	if in.Format(c.DefaultRelease().Line) == config.FormatIPK {
+	if in.Format(line) == config.FormatIPK {
 		key, err := a.usignKey(c)
 		if err != nil {
 			return err
