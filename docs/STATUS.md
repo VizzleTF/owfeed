@@ -1,30 +1,35 @@
-# What is built, and what is not
+# What is built in owfeed, and what is not
 
 *[ECOSYSTEM.md](ECOSYSTEM.md) says where the boundaries between owlab, owfeed and
-owfeed-packages run and why. This file says how much of that actually exists, as of
-2026-07-28. It is deliberately separate: the boundaries are meant to outlive any
-particular week, this is a snapshot and will go stale.*
+owfeed-packages run and why. This file says how much of owfeed's side of that
+actually exists, as of 2026-07-28.*
 
-The honest summary: the path from a source tree to a package on somebody's router
-works end to end and has been walked with real artifacts on real routers. The gaps
-that remain are named below, each with the reason it is still open rather than a
-promise about when it closes.
+This file used to cover all three repositories, and it went stale twice — both
+times on a fact belonging to another repository, never on one of its own. Nothing
+in owfeed's CI touches owlab, so nothing here could notice when owlab shipped a
+feature this file called unimplemented. Each repository now keeps its own:
+
+- **owlab** — [`docs/STATUS.md`](https://github.com/VizzleTF/owlab/blob/main/docs/STATUS.md)
+- **owfeed-packages** — [`STATUS.md`](https://github.com/VizzleTF/owfeed-packages/blob/main/STATUS.md)
+
+The boundaries are meant to outlive any particular week. A status file is a
+snapshot and will go stale; keeping it beside the code that changes it is what
+makes going stale a diff somebody has to write rather than something that happens
+quietly.
 
 ## Working, and verified rather than assumed
 
-Everything in this section was checked by running it — against live routers, the
-published feed, or released binaries — not by reading the code.
+Everything here was checked by running it — against live routers, the published
+feed, or released binaries — not by reading the code.
 
 | | Evidence |
 |---|---|
 | `owlab build` → `owfeed release` compose | Built luci-theme-footstrap through the SDK, produced a signed 7-field manifest, verified the signature back |
 | `dist/<arch>/` agreed by three implementations | owlab's `archDirs`, owfeed's `buildIPK`, the feed's `fetch.sh` — apk to `noarch/`, ipk to `all/` |
 | Install from a signed feed by name | `owlab test --feed` on 25.12: package installs, LuCI page renders. With the key removed the router reports it as not existing at all |
-| Feed updates reaching a router | Released updater 1.2.0 → hourly bot opened a PR → auto-merge → publish → both branches offer `1.2.0-r1` |
-| Self-updater migrating off a content pin | 0.11.5 pinned by hash → `check` answers `v0.11.6` from the local index → upgrade lands and leaves the package unpinned |
 | Third-party intake | Run against a real release: signature verifies, and the six-field manifest is correctly refused as the wrong format |
 | Schema published and generated | `owfeed.org/schema/v1.json` is byte-identical to the checked-in copy; the drift test fails when a field is added and the annotation guard fails when a key is renamed |
-| Auto-merge tier rules | Six scenarios exercised in a real git repository: manifest/minor merges, major bump holds, `binaries` holds, no `SIG_KEY` holds, a diff touching `SIG_KEY_ID` holds, the daily ceiling holds |
+| `owfeed releases` against owlab | Both answer 25.12→25.12.5/apk and 24.10→24.10.8/ipk today, and the comparison reports a disagreement when either answer is perturbed |
 
 ## Built but not yet exercised in anger
 
@@ -34,25 +39,24 @@ published feed, or released binaries — not by reading the code.
   demand `install.sh.sig` and fail loudly if it is missing.
 - **The intake funnel** answers correctly when run by hand. No third party has used
   it yet, so the first genuine request is still the first genuine test.
+- **`feed.yml` in `dry-run` mode**, and its `digest` / `published` / `page-url`
+  outputs. The YAML parses and the steps are the ones `owfeed-packages` runs
+  today by hand, but no repository calls it in that mode yet. It becomes real when
+  `owfeed-packages` migrates, which waits on the release below.
+- **The nightly cross-check** (`.github/workflows/crosscheck.yml`). The comparison
+  was run locally against both tools and behaves in both directions; what has not
+  happened yet is a scheduled run on a runner.
+- **Reading the signing key from the environment** in `feed.yml`'s publish job.
+  GitHub's documentation is explicit that a called job declaring `environment:`
+  uses that environment's secret rather than a passed-in one, and the job now
+  reads `secrets.OWFEED_SIGN_KEY` with the `sign-key` input as fallback — so an
+  existing caller is unaffected either way. What one live run still has to settle
+  is *whose* environment resolves, the caller's or owfeed's, since the run belongs
+  to the caller and no such environment exists in owfeed. Until that run happens,
+  `owfeed-packages` keeps its hand-written `publish.yml` rather than move a
+  signing key on the strength of a documentation reading.
 
 ## Not built, and why
-
-**A consumer job in the feed's PR pipeline.** `owfeed smoke` proves the channel
-works; nothing yet proves that what came through it functions. `owlab test --feed`
-exists precisely for this, so the code is not the obstacle — the address is. The
-router runs in a container and has to reach an HTTP server on the runner, which is
-`172.17.0.1` on GitHub's runners and something else on a WSL development machine.
-That could not be verified locally, and an unverified networking step in a live
-pipeline fails in front of a contributor rather than in front of us.
-
-**A nightly cross-check between owfeed and owlab.** Both know which OpenWrt point
-releases exist and neither reads the other, so the duplication is deliberate and the
-drift is not. The check cannot be written yet: owfeed has no command that reports
-*its* view of the newest point release. `arch.LatestPoint` is internal and
-`owfeed lock` only works inside a feed repository. What can be written today
-compares owlab against a `curl` to downloads.openwrt.org, which is not a cross-check
-— owlab already asks that server. Closing this needs a symmetric command first, and
-that is a decision about CLI surface rather than a missing workflow.
 
 **An in-package EC signature from a package author.** `owfeed sign` no longer needs
 a feed config, so the tooling is ready. Nobody uses it yet: it needs a new key and a
@@ -60,17 +64,14 @@ new repository secret, which is the maintainer's call. Until then the claim in
 `CONTRIBUTING.md` that author signatures are additive — that a package carries both
 its author's and the feed's — is true of the design and demonstrated by nothing.
 
-**CODEOWNERS as a mechanism.** `keys/` is named, and no branch rule enforces the
-review. With a single maintainer a required review blocks every key addition
-permanently instead of gating it, because the author of a pull request cannot approve
-their own. Auto-merge cannot reach `keys/` regardless — it is only ever requested on
-pull requests the update job itself opened, and that job writes one `upstream.sh`.
-The review becomes a mechanism on the day there is a second maintainer, and until
-then it is a convention.
-
-**`fidelity: vm` in owlab.** Declared in the config schema, four call sites return
-"not implemented yet". Either it gets built or it comes out of the schema; a field
-that parses and then refuses is worse than one that does not exist.
+**A consumer job in a feed's PR pipeline.** `owfeed smoke` proves the channel
+works; nothing yet proves that what came through it functions. The obstacle used
+to be the address — a router in a container has to reach an HTTP server on the
+runner, and no literal is right on a CI runner, under Docker Desktop and in a VM
+at once. owlab now takes `{host}` in a `--feed` URL and substitutes the answer per
+tier, so the obstacle is gone and what remains is sequencing: it needs an owlab
+release carrying that, and then the job belongs in the feed's own repository
+rather than here.
 
 ## Known contradictions
 

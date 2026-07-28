@@ -5,8 +5,12 @@ between them runs, what crosses it, and what each one promises never to do. It l
 because contracts belong to whoever has more than one consumer, and every contract below
 has owfeed on one side of it.*
 
-[STATUS.md](STATUS.md) is the companion to this file: how much of what follows actually
-exists today, and what is still open with the reason it is open.
+How much of what follows actually exists is answered per repository, beside the code
+that changes it: [owfeed](STATUS.md),
+[owlab](https://github.com/VizzleTF/owlab/blob/main/docs/STATUS.md),
+[owfeed-packages](https://github.com/VizzleTF/owfeed-packages/blob/main/STATUS.md).
+One shared status file was tried first and went stale twice, both times on a fact
+belonging to a repository whose CI never reads this one.
 
 Nothing here describes a dependency between the tools. There is no shared Go module and
 there is not going to be one. What follows are file formats and CLI surfaces — the only
@@ -162,11 +166,21 @@ later means apk, and resolving the newest point release in a line.
 |---|---|---|
 | which architectures does release X have | **owfeed** | `owfeed.lock` — committed, `--frozen-lock` |
 | how do I build or run architecture X | **owlab** | internal target table; outward, the `--arch` flag |
-| which releases exist, and which are apk | **owlab** | `owlab releases --json` |
+| which releases exist, and which are apk | **owlab** | `owlab releases --all --json` |
+| the same question, owfeed's own answer | **owfeed** | `owfeed releases --json` |
 
-The defence against drift is not a shared library but a nightly cross-check that runs both
-and fails when they disagree about the set of point releases or about apk vs opkg. The
-duplication stays; it becomes observable.
+Both tools answer the last question, from the same server, without reading each other.
+That is deliberate — a shared library between them is the code-level dependency both
+designs refuse — and the drift it invites is not. The defence is
+`.github/workflows/crosscheck.yml` here: nightly, it runs both and files an issue when
+they disagree about a newest point release or about apk vs opkg. The duplication stays;
+it becomes observable.
+
+The two name the same verdict differently — owlab reports the package *manager*
+(`apk` / `opkg`), owfeed the package *format* (`apk` / `ipk`) — and the cross-check maps
+between them rather than either repository renaming its own field. Each name is the right
+one where it lives: owlab is deciding what to run on a router, owfeed what extension to
+write.
 
 `owfeed.lock` is the ecosystem's fact file. owlab may read one lying beside it. owlab never
 writes one.
@@ -208,11 +222,13 @@ Five of them. Each is a file or a CLI surface; none is a shared Go package.
 | keys | below | — | — |
 | config | below | — | — |
 
-The report contract is the one with a consumer still missing. An author's CI already fails
-on it, but the feed-side use — install from the freshly built index and assert the page
-renders — needs `owlab` to install from a feed rather than a file, and neither `owlab
-install --feed` nor a `feed:` input on `owlab/action` exists yet. Until then `owfeed smoke`
-proves the channel works and nothing proves what arrived through it.
+The report contract is the one whose feed-side consumer is still missing. An author's CI
+already fails on it. The tooling for the other side exists — `owlab install --feed`,
+`owlab test --feed` and the `feed:` input on `owlab/action` all take a feed URL and its
+public key, and a `{host}` placeholder in that URL resolves to whatever address the
+router's tier reaches the runner at, which is what used to make the job unwritable. What
+is missing now is only sequencing: no feed's pipeline runs it yet. Until one does,
+`owfeed smoke` proves the channel works and nothing proves what arrived through it.
 
 ### Keys
 
@@ -323,16 +339,22 @@ owfeed-packages  ← owfeed (reusable workflow) + owlab/action (consumer test)
 package repos    ← owlab (build/test) + owfeed (sign/release)
 ```
 
-owfeed may use `owlab/action`, under three conditions: only in a test-only job, so an owlab
-outage reddens owfeed's CI but never produces a broken owfeed binary; never in `go.mod`,
-never in the reusable workflow other people call, never in `owfeed/setup`; and strictly one
-directional. **owlab uses owfeed nowhere**, including at the workflow level, because owlab
-is the bottom layer and a cycle would mean neither could be released first.
+owfeed may reach for owlab under three conditions: only in a job that is not on the path
+to a released binary, so an owlab outage reddens owfeed's CI and never produces a broken
+owfeed; never in `go.mod`, never in the reusable workflow other people call, never in
+`owfeed/setup`; and strictly one directional. **owlab uses owfeed nowhere**, including at
+the workflow level, because owlab is the bottom layer and a cycle would mean neither could
+be released first.
 
-Concretely: owfeed's CI can build a test feed, serve it locally, and use `owlab/action` to
-prove a package from that feed installs and renders its page. That catches a class of bug
-`owfeed smoke` cannot catch by design — smoke checks that apk never asked for
-`--allow-untrusted`, and checks nothing about whether what installed works.
+One such job exists today: `crosscheck.yml` installs owlab through its setup action and
+compares `owlab releases --all --json` against `owfeed releases --json`. It is scheduled
+rather than on push, and its failure files an issue — it says nothing about whether owfeed
+builds.
+
+The other one is not written yet: owfeed's CI can build a test feed, serve it locally, and
+use `owlab/action` to prove a package from that feed installs and renders its page. That
+catches a class of bug `owfeed smoke` cannot catch by design — smoke checks that apk never
+asked for `--allow-untrusted`, and checks nothing about whether what installed works.
 
 owlab's CI does not use owfeed. Where owlab needs to confirm its `dist/<arch>/` output
 matches the contract, it checks against the specification. The specification is a shared

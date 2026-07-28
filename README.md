@@ -276,7 +276,8 @@ owlab if you want to; publish with owfeed either way.
 
 They still compose, through a file format rather than a dependency: `owlab build` writes
 `dist/<arch>/` and every stage here reads it. The boundary, the invariants either side of it, and
-the contracts that cross it are written down in [ECOSYSTEM.md](docs/ECOSYSTEM.md).
+the contracts that cross it are written down in [ECOSYSTEM.md](docs/ECOSYSTEM.md), and
+[STATUS.md](docs/STATUS.md) says how much of owfeed's side of it exists today.
 
 ## I want to check what is already live
 
