@@ -158,9 +158,15 @@ URL · `smoke` inside `openwrt/rootfs` · SBOM · key rotation commands.
 
 ---
 
+## A feed built with it
+
+[VizzleTF/owfeed-packages](https://github.com/VizzleTF/owfeed-packages) — a live feed carrying a LuCI
+theme and a static Go binary across 20 architectures. Pull requests build, sign, index and check the
+whole thing with a throwaway key, so a fork never comes near the feed's own.
+
 ## Docs
 
-- [Examples](docs/examples.md) — a LuCI theme and a two-package feed, end to end.
+- [Examples](docs/examples.md) — a LuCI theme, a two-package feed, a compiled binary.
   *([Русский](docs/examples_ru.md))*
 - [Verified apk behaviour](docs/apk-behaviour.md) — what apk actually does, with reproductions.
 - [Design](docs/DESIGN.md) — the full design and the research behind it *(Russian)*.
