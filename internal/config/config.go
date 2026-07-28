@@ -123,6 +123,12 @@ type Signing struct {
 	// simply broken for third-party packages. Signing each package costs nothing and
 	// fixes both, so it is on by default.
 	SignPackages *bool `yaml:"sign-packages"`
+	// UsignKey signs opkg indexes and release manifests, as "env:VAR" or "file:PATH".
+	//
+	// It is a second key and cannot be avoided: opkg verifies usign/ed25519 while
+	// apk verifies EC prime256v1, so a feed serving both release lines signs each
+	// with the scheme its package manager understands.
+	UsignKey string `yaml:"usign-key"`
 	// KeyringPackage ships a <name>-keyring package carrying the feed's public key,
 	// which is the only way a rotated key reaches already-installed routers.
 	KeyringPackage *bool `yaml:"keyring-package"`
@@ -143,6 +149,13 @@ type SDK struct {
 }
 
 const LatestPoint = "latest-point"
+
+// Package formats. apk is 25.12 and later; ipk is 24.10 and earlier, where the
+// package manager is opkg and almost every detail differs.
+const (
+	FormatAPK = "apk"
+	FormatIPK = "ipk"
+)
 
 // BuildMode selects how a package is produced.
 type BuildMode string

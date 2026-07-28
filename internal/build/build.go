@@ -95,7 +95,11 @@ func Build(ctx context.Context, tool *apk.Tool, req Request) (*Result, error) {
 	defer os.RemoveAll(stage)
 
 	if req.Format == FormatIPK {
-		return buildIPK(req, arch, outDir)
+		// The directory is named for the architecture the package declares, and opkg
+		// calls the architecture-independent one "all" where apk calls it noarch.
+		// Writing an _all.ipk into a noarch/ directory would leave the two halves of
+		// the tree disagreeing about the same package.
+		return buildIPK(req, arch, req.OutDir)
 	}
 
 	payload := filepath.Join(stage, payloadDir)

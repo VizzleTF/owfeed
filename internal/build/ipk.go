@@ -14,9 +14,18 @@ import (
 // uses. The two lines differ in more than packaging: opkg calls an
 // architecture-independent package "all" where apk requires "noarch" and rejects
 // "all", so the same package carries a different architecture name per artifact.
-func buildIPK(req Request, arch, outDir string) (*Result, error) {
+func buildIPK(req Request, arch, root string) (*Result, error) {
 	p := req.Package
 	name := p.EffectiveName()
+
+	pkgArch := arch
+	if arch == config.Noarch {
+		pkgArch = ipk.ArchAll
+	}
+	outDir := filepath.Join(root, pkgArch)
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		return nil, err
+	}
 
 	payload, err := os.MkdirTemp(outDir, ".owfeed-ipk-*")
 	if err != nil {
@@ -31,11 +40,6 @@ func buildIPK(req Request, arch, outDir string) (*Result, error) {
 	catalogues, err := compileCatalogues(payload, req.Root, p.I18n, req.SourceDateEpoch)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
-	}
-
-	pkgArch := arch
-	if arch == config.Noarch {
-		pkgArch = ipk.ArchAll
 	}
 
 	out, err := ipk.Build(ipk.Package{

@@ -121,11 +121,23 @@ func (c *Config) validateReleases(path string) error {
 		}
 		seen[r.Line] = true
 
-		if r.Format != "apk" {
+		switch r.Format {
+		case FormatAPK, FormatIPK:
+		default:
 			return &Error{
 				Path: path,
-				Msg:  fmt.Sprintf("%s.format %q is not implemented", where, r.Format),
-				Hint: "only apk feeds are supported; for 24.10 and older keep publishing signed artifacts on releases",
+				Msg:  fmt.Sprintf("%s.format %q is not a package format", where, r.Format),
+				Hint: "apk for 25.12 and later, ipk for 24.10 and earlier",
+			}
+		}
+		// opkg verifies usign signatures and apk verifies EC ones, so a feed that
+		// serves 24.10 needs a second key. Finding that out from a router refusing
+		// the index is a bad way to learn it.
+		if r.Format == FormatIPK && c.Signing.UsignKey == "" {
+			return &Error{
+				Path: path,
+				Msg:  fmt.Sprintf("%s is an ipk line but signing.usign-key is not set", where),
+				Hint: "opkg checks signatures by default and verifies usign, not the EC scheme apk uses; run `owfeed keygen --usign` and point signing.usign-key at it",
 			}
 		}
 		if r.Default {
@@ -160,6 +172,15 @@ func (c *Config) validateSigning(path string) error {
 	case "env", "file":
 	default:
 		return errf(path, "signing.key source %q is not supported; use env: or file:", scheme)
+	}
+
+	if c.Signing.UsignKey != "" {
+		switch s, rest, ok := strings.Cut(c.Signing.UsignKey, ":"); {
+		case !ok || rest == "":
+			return errf(path, "signing.usign-key %q has no source; use env:VARNAME or file:PATH", c.Signing.UsignKey)
+		case s != "env" && s != "file":
+			return errf(path, "signing.usign-key source %q is not supported; use env: or file:", s)
+		}
 	}
 	return nil
 }

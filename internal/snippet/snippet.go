@@ -16,6 +16,8 @@ import (
 // Input is what the instructions are rendered from.
 type Input struct {
 	Config *config.Config
+	// UsignKeyID names the published opkg key, whose filename is its id.
+	UsignKeyID string
 	// Release is the line to advertise. Empty means the config's default.
 	Release string
 	// Package is the package used in the example. Empty means the first configured.
@@ -23,7 +25,38 @@ type Input struct {
 }
 
 // Shell renders the instructions as commands to paste into a router shell.
+//
+// 24.10 and earlier get a different set, because opkg and apk agree on almost
+// nothing: the repository line names a directory rather than the index file, the
+// key is installed under its own id as a filename rather than any name, and the
+// two verify different signature schemes. A snippet that mixed them would look
+// right and work on neither.
 func Shell(in Input) string {
+	if release, _ := resolve(in); in.Format(release) == "ipk" {
+		return shellOpkg(in)
+	}
+	return shellAPK(in)
+}
+
+// shellOpkg renders the 24.10 instructions.
+func shellOpkg(in Input) string {
+	f := in.Config.Feed
+	release, pkg := resolve(in)
+	base := strings.TrimSuffix(f.URL, "/")
+
+	// opkg is pointed at the directory and appends Packages.gz itself, and it reads
+	// the architecture from a file the image ships.
+	repo := fmt.Sprintf("%s/%s", base, expand(in.Config.Layout.Path, release, "$(. /etc/openwrt_release; echo $DISTRIB_ARCH)"))
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "# The key file's NAME is its id — opkg looks it up by that.\n")
+	fmt.Fprintf(&b, "wget %s/%s -O /etc/opkg/keys/%s\n\n", base, in.UsignKeyID, in.UsignKeyID)
+	fmt.Fprintf(&b, "echo \"src/gz %s %s\" >> /etc/opkg/customfeeds.conf\n\n", f.Name, repo)
+	fmt.Fprintf(&b, "opkg update && opkg install %s\n", pkg)
+	return b.String()
+}
+
+func shellAPK(in Input) string {
 	f := in.Config.Feed
 	release, pkg := resolve(in)
 	base := strings.TrimSuffix(f.URL, "/")
@@ -96,6 +129,16 @@ func Warnings(in Input) []Warning {
 				"a base package and win. Install it because you trust whoever publishes it, not because a page told you to.",
 		},
 	}
+}
+
+// Format reports the package format a release line uses.
+func (in Input) Format(line string) string {
+	for _, r := range in.Config.Releases {
+		if r.Line == line {
+			return r.Format
+		}
+	}
+	return config.FormatAPK
 }
 
 func resolve(in Input) (release, pkg string) {

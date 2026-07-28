@@ -33,9 +33,13 @@ func (a *app) build(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	tool, err := a.tool(ctx, l)
-	if err != nil {
-		return err
+	// The ipk path needs no apk at all — and could not have one, since the 24.10
+	// SDK ships opkg rather than apk-tools.
+	var tool *apk.Tool
+	if *format != build.FormatIPK {
+		if tool, err = a.tool(ctx, l); err != nil {
+			return err
+		}
 	}
 
 	if err := os.MkdirAll(*out, 0o755); err != nil {

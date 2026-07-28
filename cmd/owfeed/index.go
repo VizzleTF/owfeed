@@ -19,6 +19,7 @@ func (a *app) index(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("owfeed index", flag.ContinueOnError)
 	fs.SetOutput(a.err)
 	out := fs.String("o", defaultOut, "directory to write the publishable tree into")
+	format := fs.String("format", config.FormatAPK, "apk for 25.12 and later, ipk for 24.10 and earlier")
 	if err := fs.Parse(args); err != nil {
 		return wrap(exitConfig, err)
 	}
@@ -36,6 +37,10 @@ func (a *app) index(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	if *format == config.FormatIPK {
+		return a.indexIPK(c, l, dist, *out)
+	}
+
 	tool, err := a.tool(ctx, l)
 	if err != nil {
 		return err

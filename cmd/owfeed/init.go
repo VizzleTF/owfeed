@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/VizzleTF/owfeed/internal/config"
 	"github.com/VizzleTF/owfeed/internal/meta"
 	"github.com/VizzleTF/owfeed/internal/snippet"
 )
@@ -173,6 +174,15 @@ func (a *app) installSnippet(args []string) error {
 		return err
 	}
 	in := snippet.Input{Config: c, Package: *pkg}
+	// An ipk line's snippet names the key by its id, because that is the filename
+	// opkg looks it up under.
+	if in.Format(c.DefaultRelease().Line) == config.FormatIPK {
+		key, err := a.usignKey(c)
+		if err != nil {
+			return err
+		}
+		in.UsignKeyID = key.ID.String()
+	}
 
 	switch *format {
 	case "md":
