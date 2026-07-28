@@ -36,6 +36,6 @@ jobs:
       # alone does not answer the question. errcheck is the one that earns its place
       # here: most of what owfeed does is write files and close them, and a dropped
       # error on a signing or indexing path is a feed that looks published and is not.
-      - uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb0f9e6e3b # v9.0.0
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.6.2
+          version: v2.12.2
