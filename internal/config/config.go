@@ -187,6 +187,17 @@ type Package struct {
 	Replaces    []string `yaml:"replaces"`
 	Recommends  []string `yaml:"recommends"`
 
+	// Conflicts are packages that must not be installed alongside this one. apk
+	// spells a conflict as a negative dependency, so these become !name entries in
+	// depends.
+	//
+	// OpenWrt's own apk build drops CONFLICTS on the floor: package-pack.mk emits it
+	// only into the ipk control file and never passes it to mkpkg. A package whose
+	// Makefile declares a conflict therefore does not enforce it on 25.12 at all,
+	// which is how two packages that both rewrite the routing table end up installed
+	// together.
+	Conflicts []string `yaml:"conflicts"`
+
 	// Conffiles become /lib/apk/packages/<name>.conffiles and .conffiles_static.
 	// sysupgrade reads the latter to decide which config files to carry across an
 	// upgrade, so omitting it silently loses the user's configuration.

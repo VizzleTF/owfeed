@@ -175,6 +175,40 @@ They appear in the index without being passed to `--info` (and `--info` rejects 
     file-size: 239
 ```
 
+## A conflict is a negative dependency, and OpenWrt's apk build emits none
+
+apk has no `conflicts` field. A conflict is written as a dependency with a leading
+`!`, and `--info depends:` accepts it:
+
+```sh
+$APK mkpkg --info name:p --info version:1.0-r1 --info arch:noarch \
+  --info "depends:curl jq !https-dns-proxy !luci-app-passwall" --files root --output p.apk
+$APK adbdump p.apk
+#   depends: # 4 items
+#     - curl
+#     - '!https-dns-proxy'
+#     - jq
+#     - '!luci-app-passwall'
+```
+
+On the device it resolves as a real constraint:
+
+```
+ERROR: unable to select packages:
+  https-dns-proxy-2026.05.06-r1:
+    breaks: podkop-0.28072026-r1[!https-dns-proxy]
+```
+
+**OpenWrt's own apk packages carry none of this.** In `package-pack.mk`, `CONFLICTS`
+appears once, inside the `Package/$(1)/CONTROL` block that produces an ipk control
+file; the `mkpkg` invocation a few hundred lines below never mentions it, and the
+apk branch does not write `CONTROL` at all. So a Makefile that declares a conflict
+does not enforce one on 25.12.
+
+That is not academic. `podkop` declares conflicts with `https-dns-proxy`, `nextdns`,
+`luci-app-passwall` and `luci-app-passwall2` — four packages that all rewrite the
+routing table — and on 25.12 nothing stops a user installing two of them.
+
 ## `mkpkg` records unknown file owners as `nobody`, not as root
 
 **This is the most consequential finding here, because it is silent.** `mkpkg` stores

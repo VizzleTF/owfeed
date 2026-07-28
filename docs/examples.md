@@ -150,30 +150,104 @@ Paste the output into the README verbatim. `doctor` checks it has not drifted.
 
 ---
 
-## Two packages from one repository
+## Two packages from one repository: podkop
 
-Each entry is independent; they share the feed, the key and the index. Only the `packages:` section
-is shown here — the rest of `owfeed.yml` is unchanged.
+[podkop](https://github.com/itdoginfo/podkop) ships two packages from one repo — a shell-script
+service and the LuCI app that drives it. Both are `PKGARCH:=all` with empty `Build/Compile`, so
+neither needs a toolchain. This is the config that builds them, verified end to end against the real
+upstream repository.
 
 ```yaml
-packages:
-  - name: luci-theme-footstrap
-    build: mkpkg
-    arch: noarch
-    version-from: file:./dist/VERSION
-    files: ./dist/root
-    depends: [luci-base]
-    conffiles: ["/etc/config/footstrap"]
+version: 1
 
-  - name: luci-app-footstrap-tools
+feed:
+  name: podkop
+  url: https://feed.example.org
+  title: podkop
+  maintainer: "ITDog <podkop@itdog.info>"
+  license: GPL-2.0-or-later
+  homepage: https://podkop.net
+
+publish:
+  - target: github-pages
+
+packages:
+  - name: podkop
     build: mkpkg
     arch: noarch
-    version: 1.0.0-r1
-    files: ./tools/dist/root
-    depends: [luci-base, luci-theme-footstrap]
-    scripts:
-      post-install: ./tools/post-install.sh
+    version-from: file:./VERSION
+    files: ./staging/podkop
+    description: "Domain routing. Use of VLESS, Shadowsocks technologies"
+    depends: [sing-box, curl, jq, kmod-nft-tproxy, coreutils-base64, bind-dig]
+    conflicts: [https-dns-proxy, nextdns, luci-app-passwall, luci-app-passwall2]
+    conffiles: ["/etc/config/podkop"]
+
+  - name: luci-app-podkop
+    build: mkpkg
+    arch: noarch
+    version-from: file:./VERSION
+    files: ./staging/luci-app-podkop
+    description: "LuCI podkop app"
+    depends: [luci-base, podkop]
+    i18n:
+      from: ./luci-app-podkop/po
+      basename: podkop
 ```
 
-A `scripts:` entry is merged into the OpenWrt wrapper rather than replacing it, so
-`default_postinst` still runs.
+Staging is a straight copy plus the version substitution the Makefiles do:
+
+```sh
+#!/bin/sh
+set -e
+VER="0.$(date +%d%m%Y)"; echo "$VER-r1" > VERSION
+
+# luci-app-podkop: htdocs -> /www, root -> /
+mkdir -p staging/luci-app-podkop/www
+cp -a luci-app-podkop/htdocs/. staging/luci-app-podkop/www/
+cp -a luci-app-podkop/root/.   staging/luci-app-podkop/
+
+# podkop: files/ maps 1:1, except usr/lib/* -> /usr/lib/podkop/
+mkdir -p staging/podkop/usr/lib/podkop
+cp -a podkop/files/etc podkop/files/usr/bin staging/podkop/
+cp -a podkop/files/usr/lib/.                staging/podkop/usr/lib/podkop/
+
+grep -rl __COMPILED_VERSION_VARIABLE__ staging | xargs sed -i "s/__COMPILED_VERSION_VARIABLE__/$VER/g"
+```
+
+```sh
+owfeed lock --update
+owfeed build && owfeed sign && owfeed index && owfeed doctor
+#   built dist/podkop-0.28072026-r1.apk
+#   built dist/luci-app-podkop-0.28072026-r1.apk
+#     note: compiled 1 translation catalogue(s): /usr/lib/lua/luci/i18n/podkop.ru.lmo
+#   25.12: 2 package(s) across 35 architecture(s)
+#   390 checks passed
+```
+
+On a router, `apk add luci-app-podkop` pulls the whole chain — `sing-box`, `curl`, `jq`,
+`kmod-nft-tproxy`, `coreutils-base64`, `bind-dig` — from the official feeds, and installs with no
+`--allow-untrusted`.
+
+### `conflicts:` is the entry that does something OpenWrt's own build cannot
+
+podkop's Makefile declares `CONFLICTS:=https-dns-proxy nextdns luci-app-passwall
+luci-app-passwall2`, because all of them rewrite the routing table. On 25.12 that declaration has no
+effect: `package-pack.mk` emits `Conflicts:` only into the ipk control file and never passes it to
+`mkpkg`, so the built apk package carries nothing.
+
+apk does support it — a conflict is a dependency with a leading `!` — and owfeed emits one:
+
+```
+ERROR: unable to select packages:
+  https-dns-proxy-2026.05.06-r1:
+    breaks: podkop-0.28072026-r1[!https-dns-proxy]
+```
+
+### A note on `i18n.basename`
+
+podkop ships `LUCI_LANGUAGES:=en ru`, which makes `luci.mk` emit separate
+`luci-i18n-podkop-<lang>` packages. Folding the catalogues into `luci-app-podkop` instead — which is
+what the config above does — means a router that installed the language package from an earlier
+release already owns `/usr/lib/lua/luci/i18n/podkop.ru.lmo`. Either keep shipping the language
+packages, or pick a basename that does not collide, as `luci-theme-footstrap` does. owfeed will not
+guess for you; `doctor` cannot see the other package either.

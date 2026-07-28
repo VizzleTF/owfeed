@@ -175,7 +175,7 @@ func mkpkgArgs(stage string, req Request) ([]string, error) {
 		{"license", firstNonEmpty(p.License, req.Feed.License)},
 		{"url", firstNonEmpty(p.URL, req.Feed.Homepage)},
 		{"maintainer", firstNonEmpty(p.Maintainer, req.Feed.Maintainer)},
-		{"depends", strings.Join(p.Depends, " ")},
+		{"depends", strings.Join(depends(p), " ")},
 		{"provides", strings.Join(provides(p), " ")},
 		{"replaces", strings.Join(p.Replaces, " ")},
 		{"recommends", strings.Join(p.Recommends, " ")},
@@ -206,6 +206,17 @@ func mkpkgArgs(stage string, req Request) ([]string, error) {
 
 	args = append(args, "--files", payloadDir, "--output", PackageFileName(name, req.Version))
 	return args, nil
+}
+
+// depends folds conflicts into the dependency list, which is how apk spells them:
+// a leading ! makes the entry a constraint against the package being installed
+// rather than for it.
+func depends(p config.Package) []string {
+	out := append([]string(nil), p.Depends...)
+	for _, c := range p.Conflicts {
+		out = append(out, "!"+strings.TrimPrefix(c, "!"))
+	}
+	return out
 }
 
 // provides mirrors package-pack.mk: a package carrying an ABI suffix also provides

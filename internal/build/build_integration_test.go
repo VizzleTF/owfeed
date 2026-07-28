@@ -178,3 +178,34 @@ func TestIntegrationBuildRejectsBadVersion(t *testing.T) {
 		t.Errorf("error does not explain what ~ means to apk: %v", err)
 	}
 }
+
+// apk spells a conflict as a negative dependency. OpenWrt's own apk build does not
+// emit them at all — package-pack.mk puts CONFLICTS in the ipk control file and
+// never passes it to mkpkg — so a package whose Makefile declares a conflict does
+// not enforce it on 25.12. podkop, which conflicts with four packages that all
+// rewrite the routing table, is the case that makes this matter.
+func TestIntegrationConflictsBecomeNegativeDependencies(t *testing.T) {
+	tool := testapk.Require(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	out := t.TempDir()
+	req := request(stageFixture(t), out)
+	req.Package.Conflicts = []string{"https-dns-proxy", "luci-app-passwall"}
+
+	res, err := build.Build(ctx, tool, req)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	dump, err := tool.RunOK(ctx, apk.Invocation{Workdir: out, Args: []string{"adbdump", filepath.Base(res.File)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"'!https-dns-proxy'", "'!luci-app-passwall'", "luci-base"} {
+		if !strings.Contains(dump.Stdout, want) {
+			t.Errorf("depends does not carry %s:\n%s", want, dump.Stdout)
+		}
+	}
+}
