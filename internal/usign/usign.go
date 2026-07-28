@@ -102,7 +102,7 @@ func decodeRaw(blob []byte, wantLen int) ([]byte, error) {
 
 	raw, err := base64.StdEncoding.DecodeString(b64)
 	if err != nil {
-		return nil, fmt.Errorf("%w: base64: %v", ErrFormat, err)
+		return nil, fmt.Errorf("%w: not base64: %w", ErrFormat, err)
 	}
 
 	// Magic before length, deliberately. A blob from some other signing scheme is

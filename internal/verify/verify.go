@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/VizzleTF/owfeed/internal/config"
@@ -102,7 +103,7 @@ func Run(ctx context.Context, opts Options) (*Report, error) {
 		if err != nil {
 			return nil, fmt.Errorf("GET %s: %w", u, err)
 		}
-		io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
 		resp.Body.Close()
 
 		switch {
@@ -320,7 +321,14 @@ func liveIndexIPK(ctx context.Context, hc *http.Client, repo string) ([]indexEnt
 			case "SHA256sum":
 				e.Hashes = value
 			case "Size":
-				fmt.Sscanf(value, "%d", &e.FileSize)
+				// An unparsed size used to become zero silently, and OWF512 would
+				// then report every package in the feed as the wrong size. A field
+				// that cannot be read is a broken index, not a size of nothing.
+				n, err := strconv.ParseInt(value, 10, 64)
+				if err != nil {
+					return nil, fmt.Errorf("%s: Size %q is not a number", e.Name, value)
+				}
+				e.FileSize = n
 			}
 		}
 		if e.Name != "" {
@@ -369,7 +377,7 @@ func checkNoJekyll(r *Report, hc *http.Client, base string) {
 		// and a network failure here should not masquerade as a finding.
 		return
 	}
-	io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<10))
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<10))
 	resp.Body.Close()
 	if resp.StatusCode == http.StatusOK {
 		return

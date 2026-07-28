@@ -11,7 +11,6 @@ package doctor
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -355,15 +354,6 @@ func publishesTo(p config.Package, arch string) bool {
 	return false
 }
 
-// indexEntry is one package as the index describes it.
-type indexEntry struct {
-	Name     string `json:"name"`
-	Version  string `json:"version"`
-	Arch     string `json:"arch"`
-	Hashes   string `json:"hashes"`
-	FileSize int64  `json:"file-size"`
-}
-
 // checkTree runs everything that needs the built tree.
 func checkTree(ctx context.Context, r *Report, in Input) error {
 	dirs, err := indexDirs(in.OutDir)
@@ -698,20 +688,6 @@ func indexDirs(out string) ([]string, error) {
 	}
 	sort.Strings(dirs)
 	return dirs, nil
-}
-
-func readIndexJSON(dir string) ([]indexEntry, error) {
-	b, err := os.ReadFile(filepath.Join(dir, index.JSONFile))
-	if err != nil {
-		return nil, err
-	}
-	var doc struct {
-		Packages []indexEntry `json:"packages"`
-	}
-	if err := json.Unmarshal(b, &doc); err != nil {
-		return nil, fmt.Errorf("%s: %w", filepath.Join(dir, index.JSONFile), err)
-	}
-	return doc.Packages, nil
 }
 
 func containsID(ids []string, want keys.Identity) bool {

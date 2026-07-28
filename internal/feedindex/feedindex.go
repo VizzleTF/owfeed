@@ -27,6 +27,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/VizzleTF/owfeed/internal/ipkindex"
@@ -146,7 +147,15 @@ func readIPK(dir string) (*Index, error) {
 			case "SHA256sum":
 				e.SHA256 = value
 			case "Size":
-				fmt.Sscanf(value, "%d", &e.Size)
+				// Unparsed, this used to become zero, and every check comparing a
+				// package against its recorded size would then compare it against
+				// nothing and report the whole feed as wrong. A field that cannot
+				// be read is a broken index.
+				n, err := strconv.ParseInt(value, 10, 64)
+				if err != nil {
+					return nil, fmt.Errorf("%s: Size %q is not a number", e.Name, value)
+				}
+				e.Size = n
 			}
 		}
 		if e.Name != "" {

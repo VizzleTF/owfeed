@@ -1,0 +1,49 @@
+# Linters chosen for what they catch in this codebase specifically, not for a score.
+#
+# errcheck is the one that matters most here: a great deal of what owfeed does is
+# write files and close them, and an ignored error on a signing or indexing path is a
+# feed that looks published and is not.
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - errcheck
+    - staticcheck
+    - govet
+    - ineffassign
+    - unused
+    - misspell
+    - bodyclose      # every response this fetches is over a network it does not control
+    - errorlint      # errors.Is against a wrapped error, which is how a fail-closed check silently stops firing
+
+  settings:
+    errcheck:
+      # Closing a file that was only read reports nothing a caller could act on, and
+      # neither does a write to the terminal. Both are excluded by name rather than
+      # by turning errcheck off, so a Close on a file being *written* -- where a
+      # failure loses data -- still has to be handled.
+      exclude-functions:
+        - (io.Closer).Close
+        - (*os.File).Close
+        - (io.ReadCloser).Close
+        - (*compress/gzip.Reader).Close
+        - os.Remove
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - io.Copy
+        - os.RemoveAll
+    misspell:
+      # "Wich" is Jo-Philipp Wich, an OpenWrt maintainer whose key this pins.
+      ignore-rules:
+        - wich
+
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters: [errcheck, bodyclose]
+
+formatters:
+  enable:
+    - gofmt

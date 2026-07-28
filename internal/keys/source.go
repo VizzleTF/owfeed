@@ -39,7 +39,7 @@ func (s Source) Load(root string) (*ecdsa.PrivateKey, error) {
 		}
 		return LoadPrivate(b)
 	default:
-		return nil, fmt.Errorf("signing key source %q is not supported; use env: or file:", scheme)
+		return nil, fmt.Errorf("signing key source %q is not supported; the forms are env:VAR and file:PATH", scheme)
 	}
 }
 
