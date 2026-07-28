@@ -47,14 +47,28 @@ jobs:
 
       # owlab comes from its release, verified by attestation, because what is
       # being checked is the answer owlab actually gives people.
-      - uses: VizzleTF/owlab/setup@v0.3.0
+      #
+      # v0.4.0 is the floor, for two reasons that both fail this job on anything
+      # older: before it, `owlab releases` demanded an owlab.yaml, and this
+      # repository is not a package project and has none; and `manager` -- the
+      # apk/opkg verdict, which is half of what is being compared -- was not in the
+      # JSON at all.
+      - uses: VizzleTF/owlab/setup@v0.4.0
         with:
-          version: v0.3.0
+          version: v0.4.0
 
       - id: compare
         run: |
           "$RUNNER_TEMP/owfeed" releases --json > owfeed.json
           owlab releases --all --json > owlab.json
+
+          # A tool that failed to answer is not two tools agreeing. Without this the
+          # comparison below reads an empty document, finds no disagreement in it,
+          # and reports success.
+          jq -e '.lines | length > 0' owfeed.json >/dev/null \
+            || { echo "::error::owfeed reported no release lines"; exit 1; }
+          jq -e '[.distros[] | select(.distro == "openwrt") | .branches[]] | length > 0' owlab.json >/dev/null \
+            || { echo "::error::owlab reported no OpenWrt branches"; exit 1; }
 
           # Only OpenWrt: owfeed derives from downloads.openwrt.org and makes no
           # claim about a fork, so comparing against ImmortalWrt would report a
