@@ -5,6 +5,9 @@ between them runs, what crosses it, and what each one promises never to do. It l
 because contracts belong to whoever has more than one consumer, and every contract below
 has owfeed on one side of it.*
 
+[STATUS.md](STATUS.md) is the companion to this file: how much of what follows actually
+exists today, and what is still open with the reason it is open.
+
 Nothing here describes a dependency between the tools. There is no shared Go module and
 there is not going to be one. What follows are file formats and CLI surfaces — the only
 things two independently released binaries can agree on without having to be released
