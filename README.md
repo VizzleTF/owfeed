@@ -195,6 +195,7 @@ owfeed refuses each of these. Every one has burned a real maintainer.
 | `/etc/config/foo` not in `conffiles:` | sysupgrade replaces the user's settings with your defaults, silently, every upgrade. |
 | `.po` files in the payload | LuCI reads compiled `.lmo`. Point `i18n.from:` at them and owfeed compiles them. |
 | A README that drifted | already live in a major feed today. |
+| A package the build dropped | absence is invisible to every check that reads the tree, so owfeed checks the tree against your config. |
 
 ## Things owfeed will not pretend
 
