@@ -15,13 +15,17 @@ name: owfeed feed
 #   - The publish job runs in an environment, so approval and secret scoping are the
 #     repository's to configure rather than something each feed reinvents.
 #
+# The setup action below is referenced by exact tag rather than a floating major, so
+# that pinning this workflow pins everything it runs. RELEASING.md is the two lines
+# that have to move when a release is cut.
+#
 # Usage:
 #
 #   jobs:
 #     publish:
-#       uses: VizzleTF/owfeed/.github/workflows/feed.yml@v1
+#       uses: VizzleTF/owfeed/.github/workflows/feed.yml@v0.1.0
 #       with:
-#         owfeed-version: v1.0.0
+#         owfeed-version: v0.1.0
 #         pre-build: for d in packages/*/; do ./tools/fetch.sh "$d"; done
 #         post-index: ./tools/check-tree.sh
 #         smoke-releases: "25.12 24.10"
@@ -101,7 +105,7 @@ jobs:
       SOURCE_DATE_EPOCH: ${{ inputs.source-date-epoch }}
     steps:
       - uses: actions/checkout@v4
-      - uses: VizzleTF/owfeed/setup@v1
+      - uses: VizzleTF/owfeed/setup@v0.1.0
         with:
           version: ${{ inputs.owfeed-version }}
 
@@ -135,7 +139,7 @@ jobs:
       SOURCE_DATE_EPOCH: ${{ inputs.source-date-epoch }}
     steps:
       - uses: actions/checkout@v4
-      - uses: VizzleTF/owfeed/setup@v1
+      - uses: VizzleTF/owfeed/setup@v0.1.0
         with:
           version: ${{ inputs.owfeed-version }}
 
