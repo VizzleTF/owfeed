@@ -9,6 +9,7 @@ import (
 
 	"github.com/VizzleTF/owfeed/internal/config"
 	"github.com/VizzleTF/owfeed/internal/meta"
+	"github.com/VizzleTF/owfeed/internal/schema"
 	"github.com/VizzleTF/owfeed/internal/snippet"
 )
 
@@ -128,21 +129,16 @@ func sanitiseName(s string) string {
 }
 
 func scaffold(name, url string) string {
-	// No $schema modeline. There was one, pointing at a host that does not exist and
-	// a file that was never published — so the first line of every config owfeed
-	// generated was a promise it did not keep. Until then the validator is the
-	// specification, and it rejects an unknown key rather than warning about it.
+	// The $schema modeline is back, and this time it points at a file that is served.
+	// The previous one named a host that did not exist, so the first line of every
+	// config owfeed generated was a promise it did not keep — which is why it was
+	// removed, and why it only returned once `curl` proved the URL answers rather
+	// than once the file existed in the repository.
 	//
-	// The schema now exists: internal/schema generates it from internal/config, and
-	// .github/workflows/pages.yml publishes it. The modeline comes back when the URL
-	// in schema.ID actually answers — not when the file exists in the repository.
-	// That is the same mistake as last time, one directory further along. Check it,
-	// then add:
-	//
-	//	# yaml-language-server: $schema=https://owfeed.org/schema/v1.json
-	//
-	//	$ curl -fsS https://owfeed.org/schema/v1.json | head -1
-	return fmt.Sprintf(`# Reference: https://github.com/VizzleTF/owfeed/blob/main/docs/examples.md
+	// It describes shape, not the rules: the validator still rejects keys the schema
+	// permits, and remains the specification. See internal/schema.
+	return fmt.Sprintf(`# yaml-language-server: $schema=%s
+# Reference: https://github.com/VizzleTF/owfeed/blob/main/docs/examples.md
 version: 1
 
 feed:
@@ -171,7 +167,7 @@ packages:
     # Every /etc/config file the package ships must be listed here, or sysupgrade
     # replaces the user's settings with the package defaults on every upgrade.
     conffiles: []
-`, name, url, name, meta.MaxDescriptionBytes)
+`, schema.ID, name, url, name, meta.MaxDescriptionBytes)
 }
 
 func (a *app) installSnippet(args []string) error {
