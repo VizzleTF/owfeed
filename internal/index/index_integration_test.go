@@ -21,6 +21,7 @@ import (
 // directory and the matching public key in a trust directory.
 type feed struct {
 	dir      string
+	pkgDir   string
 	keyDir   string
 	trustDir string
 	signer   index.Signer
@@ -32,6 +33,8 @@ func newFeed(t *testing.T, tool *apk.Tool) feed {
 	defer cancel()
 
 	f := feed{dir: t.TempDir(), keyDir: t.TempDir(), trustDir: t.TempDir()}
+	// build writes into a subdirectory named for the architecture.
+	f.pkgDir = filepath.Join(f.dir, config.Noarch)
 
 	key, err := keys.Generate()
 	if err != nil {
@@ -62,7 +65,7 @@ func newFeed(t *testing.T, tool *apk.Tool) feed {
 		}
 		_, err := build.Build(ctx, tool, build.Request{
 			Package: config.Package{
-				Name: name, Build: config.BuildMkpkg, Arch: "noarch",
+				Name: name, Build: config.BuildMkpkg, Arch: config.PkgArch{List: []string{config.Noarch}},
 				Version: "1.0-r1", Files: filepath.Join(name, "root"),
 			},
 			Root: src, Version: "1.0-r1", OutDir: f.dir,
@@ -83,7 +86,7 @@ func TestIntegrationSignAndIndex(t *testing.T) {
 
 	f := newFeed(t, tool)
 
-	signed, err := index.Sign(ctx, tool, f.dir, f.signer)
+	signed, err := index.Sign(ctx, tool, f.pkgDir, f.signer)
 	if err != nil {
 		t.Fatalf("Sign: %v", err)
 	}
@@ -92,7 +95,7 @@ func TestIntegrationSignAndIndex(t *testing.T) {
 	}
 
 	res, err := index.Build(ctx, tool, index.Options{
-		Dir: f.dir, TrustDir: f.trustDir, Signer: f.signer,
+		Dir: f.pkgDir, TrustDir: f.trustDir, Signer: f.signer,
 		Description: "owfeed test feed",
 	})
 	if err != nil {
@@ -104,7 +107,7 @@ func TestIntegrationSignAndIndex(t *testing.T) {
 
 	// Deflate, never zstd: OpenWrt builds apk with -Dzstd=disabled, so a zstd index
 	// reads fine on the build host and fails on every router.
-	adb, err := os.ReadFile(filepath.Join(f.dir, index.IndexFile))
+	adb, err := os.ReadFile(filepath.Join(f.pkgDir, index.IndexFile))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +125,7 @@ func TestIntegrationSignAndIndex(t *testing.T) {
 			FileSize int64  `json:"file-size"`
 		} `json:"packages"`
 	}
-	raw, err := os.ReadFile(filepath.Join(f.dir, index.JSONFile))
+	raw, err := os.ReadFile(filepath.Join(f.pkgDir, index.JSONFile))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +141,7 @@ func TestIntegrationSignAndIndex(t *testing.T) {
 		}
 		// apk derives the download name from the package name and version, so the
 		// file has to be sitting flat beside the index under exactly that name.
-		file := filepath.Join(f.dir, build.PackageFileName(p.Name, p.Version))
+		file := filepath.Join(f.pkgDir, build.PackageFileName(p.Name, p.Version))
 		st, err := os.Stat(file)
 		if err != nil {
 			t.Errorf("index names %s-%s but %s: %v", p.Name, p.Version, filepath.Base(file), err)
@@ -150,7 +153,7 @@ func TestIntegrationSignAndIndex(t *testing.T) {
 		}
 	}
 
-	sums, err := os.ReadFile(filepath.Join(f.dir, index.SumsFile))
+	sums, err := os.ReadFile(filepath.Join(f.pkgDir, index.SumsFile))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,14 +175,14 @@ func TestIntegrationIndexRejectsUnsignedPackages(t *testing.T) {
 
 	f := newFeed(t, tool)
 
-	_, err := index.Build(ctx, tool, index.Options{Dir: f.dir, TrustDir: f.trustDir, Signer: f.signer})
+	_, err := index.Build(ctx, tool, index.Options{Dir: f.pkgDir, TrustDir: f.trustDir, Signer: f.signer})
 	if err == nil {
 		t.Fatal("Build indexed unsigned packages")
 	}
 	if !strings.Contains(err.Error(), "UNTRUSTED") {
 		t.Errorf("error does not come from apk's own verification: %v", err)
 	}
-	if _, statErr := os.Stat(filepath.Join(f.dir, index.IndexFile)); statErr == nil {
+	if _, statErr := os.Stat(filepath.Join(f.pkgDir, index.IndexFile)); statErr == nil {
 		t.Error("a failed index build left packages.adb behind")
 	}
 }
@@ -206,10 +209,10 @@ func TestIntegrationIndexRejectsForeignKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := index.Sign(ctx, tool, f.dir, foreign); err != nil {
+	if _, err := index.Sign(ctx, tool, f.pkgDir, foreign); err != nil {
 		t.Fatalf("Sign with the foreign key: %v", err)
 	}
-	if _, err := index.Build(ctx, tool, index.Options{Dir: f.dir, TrustDir: f.trustDir, Signer: f.signer}); err == nil {
+	if _, err := index.Build(ctx, tool, index.Options{Dir: f.pkgDir, TrustDir: f.trustDir, Signer: f.signer}); err == nil {
 		t.Fatal("Build accepted packages signed by a key the feed does not publish")
 	}
 }

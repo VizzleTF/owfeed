@@ -50,14 +50,15 @@ func newFixture(t *testing.T) fixture {
 	}
 
 	pkg := config.Package{
-		Name: pkgName, Build: config.BuildMkpkg, Arch: "noarch",
+		Name: pkgName, Build: config.BuildMkpkg, Arch: config.PkgArch{List: []string{config.Noarch}},
 		Version: pkgVersion, Files: "root", Conffiles: []string{"/etc/config/demo"},
 	}
 	cfg := &config.Config{Feed: config.Feed{Name: "demofeed"}, Packages: []config.Package{pkg}}
 
-	dist := t.TempDir()
+	buildOut := t.TempDir()
+	dist := filepath.Join(buildOut, config.Noarch)
 	if _, err := build.Build(ctx, tool, build.Request{
-		Package: pkg, Root: root, Version: pkgVersion, OutDir: dist,
+		Package: pkg, Root: root, Version: pkgVersion, OutDir: buildOut,
 		SourceDateEpoch: time.Unix(1750000000, 0),
 	}); err != nil {
 		t.Fatalf("build: %v", err)
@@ -188,7 +189,7 @@ func TestIntegrationCatchesBreakage(t *testing.T) {
 					t.Fatal(err)
 				}
 				name := build.PackageFileName(pkgName, pkgVersion)
-				copyInto(t, filepath.Join(unsigned, name), filepath.Join(f.indexDir, name))
+				copyInto(t, filepath.Join(unsigned, "noarch", name), filepath.Join(f.indexDir, name))
 			},
 			wantID: "OWF303",
 		},

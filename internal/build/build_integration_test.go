@@ -49,7 +49,7 @@ func request(root, out string) build.Request {
 		Package: config.Package{
 			Name:        "luci-app-demo",
 			Build:       config.BuildMkpkg,
-			Arch:        "noarch",
+			Arch:        config.PkgArch{List: []string{config.Noarch}},
 			Version:     "1.2.3-r1",
 			Files:       "dist/root",
 			Description: "A demo application, with \"quotes\" and $vars in the text.",
@@ -82,7 +82,7 @@ func TestIntegrationBuild(t *testing.T) {
 		t.Errorf("built %s, want the name OpenWrt's package-pack.mk would produce", got)
 	}
 
-	dump, err := tool.RunOK(ctx, apk.Invocation{Workdir: out, Args: []string{"adbdump", filepath.Base(res.File)}})
+	dump, err := tool.RunOK(ctx, apk.Invocation{Workdir: filepath.Dir(res.File), Args: []string{"adbdump", filepath.Base(res.File)}})
 	if err != nil {
 		t.Fatalf("adbdump: %v", err)
 	}
@@ -199,7 +199,7 @@ func TestIntegrationConflictsBecomeNegativeDependencies(t *testing.T) {
 		t.Fatalf("Build: %v", err)
 	}
 
-	dump, err := tool.RunOK(ctx, apk.Invocation{Workdir: out, Args: []string{"adbdump", filepath.Base(res.File)}})
+	dump, err := tool.RunOK(ctx, apk.Invocation{Workdir: filepath.Dir(res.File), Args: []string{"adbdump", filepath.Base(res.File)}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -5,6 +5,8 @@ import (
 	"crypto/ecdsa"
 	"flag"
 	"os"
+	"path/filepath"
+	"sort"
 
 	"github.com/VizzleTF/owfeed/internal/config"
 	"github.com/VizzleTF/owfeed/internal/index"
@@ -51,12 +53,31 @@ func (a *app) sign(ctx context.Context, args []string) error {
 		return wrap(exitKey, err)
 	}
 
-	signed, err := index.Sign(ctx, tool, dir, signer)
+	// The build directory holds one subdirectory per architecture.
+	tree, err := index.Tree(dir)
 	if err != nil {
 		return wrap(exitKey, err)
 	}
-	for _, p := range signed {
-		a.logf("signed %s", p)
+	if len(tree) == 0 {
+		return fail(exitKey, "%s holds no packages; run `owfeed build` first", dir)
+	}
+
+	arches := make([]string, 0, len(tree))
+	for arch := range tree {
+		arches = append(arches, arch)
+	}
+	sort.Strings(arches)
+
+	var signed []string
+	for _, arch := range arches {
+		got, err := index.Sign(ctx, tool, filepath.Join(dir, arch), signer)
+		if err != nil {
+			return wrap(exitKey, err)
+		}
+		for _, p := range got {
+			a.logf("signed %s/%s", arch, p)
+		}
+		signed = append(signed, got...)
 	}
 	// Signing each package is what makes `apk add ./file.apk` work without a flag,
 	// and what makes LuCI's Upload Package flow usable at all: package-manager-call

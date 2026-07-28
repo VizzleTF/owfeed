@@ -233,3 +233,38 @@ func TestDuplicatePackageName(t *testing.T) {
 		t.Fatalf("Parse(duplicate) = %v, want a duplicate-name error", err)
 	}
 }
+
+// A static binary — Go, Rust — needs no OpenWrt SDK, only the right GOARCH, so the
+// SDK-less path is not restricted to noarch.
+func TestMultiArchPackage(t *testing.T) {
+	src := strings.Replace(minimal,
+		"    arch: noarch\n    version: 1.2.3-r1\n    files: ./dist/root",
+		"    arch: [x86_64, aarch64_cortex-a53]\n    version: 1.2.3-r1\n    files: ./dist/{arch}/root", 1)
+
+	c := mustParse(t, src)
+	got := c.Packages[0].Arch
+	if got.IsNoarch() || len(got.List) != 2 {
+		t.Fatalf("arch = %+v, want two architectures", got)
+	}
+
+	// Two architectures cannot share one payload: if they could, the package would
+	// be noarch. Requiring the template makes the mistake impossible.
+	noTemplate := strings.Replace(src, "./dist/{arch}/root", "./dist/root", 1)
+	if _, err := parse(t, noTemplate); err == nil || !strings.Contains(err.Error(), "{arch}") {
+		t.Errorf("Parse(no {arch}) = %v, want it to demand the placeholder", err)
+	}
+
+	// noarch already installs everywhere; naming it alongside a real architecture is
+	// a contradiction, not a union.
+	mixed := strings.Replace(src, "[x86_64, aarch64_cortex-a53]", "[noarch, x86_64]", 1)
+	if _, err := parse(t, mixed); err == nil || !strings.Contains(err.Error(), "noarch") {
+		t.Errorf("Parse(noarch + arch) = %v, want it rejected", err)
+	}
+
+	// A single architecture is still fine without a template.
+	one := strings.Replace(src, "[x86_64, aarch64_cortex-a53]", "x86_64", 1)
+	one = strings.Replace(one, "./dist/{arch}/root", "./dist/root", 1)
+	if _, err := parse(t, one); err != nil {
+		t.Errorf("Parse(single arch) = %v", err)
+	}
+}

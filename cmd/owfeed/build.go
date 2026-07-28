@@ -55,22 +55,28 @@ func (a *app) build(ctx context.Context, args []string) error {
 		if err != nil {
 			return wrap(exitBuild, err)
 		}
-		res, err := build.Build(ctx, tool, build.Request{
-			Package:         p,
-			Feed:            c.Feed,
-			Root:            a.root(),
-			Version:         version,
-			OutDir:          *out,
-			SourceDateEpoch: epoch,
-		})
-		if err != nil {
-			return wrap(exitBuild, err)
+		// A package names one architecture or many; each is built from its own
+		// staged payload, because two architectures that could share one payload
+		// would be a noarch package.
+		for _, arch := range p.Arch.List {
+			res, err := build.Build(ctx, tool, build.Request{
+				Package:         p,
+				Feed:            c.Feed,
+				Root:            a.root(),
+				Version:         version,
+				Arch:            arch,
+				OutDir:          *out,
+				SourceDateEpoch: epoch,
+			})
+			if err != nil {
+				return wrap(exitBuild, err)
+			}
+			a.logf("built %s", rel(res.File))
+			for _, note := range res.Notes {
+				a.logf("  note: %s", note)
+			}
+			built++
 		}
-		a.logf("built %s", rel(res.File))
-		for _, note := range res.Notes {
-			a.logf("  note: %s", note)
-		}
-		built++
 	}
 
 	if built == 0 {

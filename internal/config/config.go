@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -164,10 +165,11 @@ type Package struct {
 	Name  string    `yaml:"name"`
 	Build BuildMode `yaml:"build"`
 
-	// Arch is "noarch" for architecture-independent packages. It is never "all":
-	// apk rejects "all" as uninstallable, which is why OpenWrt's own package-pack.mk
-	// translates LUCI_PKGARCH:=all into arch:noarch.
-	Arch string `yaml:"arch"`
+	// Arch is "noarch" for architecture-independent packages, or a list of
+	// architectures for one carrying compiled code. It is never "all": apk rejects
+	// "all" as uninstallable, which is why OpenWrt's own package-pack.mk translates
+	// LUCI_PKGARCH:=all into arch:noarch.
+	Arch PkgArch `yaml:"arch"`
 
 	// Version is a literal version, mutually exclusive with VersionFrom.
 	Version string `yaml:"version"`
@@ -176,6 +178,10 @@ type Package struct {
 	VersionFrom string `yaml:"version-from"`
 
 	// Files is the staged rootfs handed to `apk mkpkg --files`.
+	//
+	// It may contain {arch}, which is required when the package names more than one
+	// architecture: those packages differ by definition, so one payload cannot serve
+	// them all.
 	Files string `yaml:"files"`
 
 	Description string   `yaml:"description"`
@@ -215,6 +221,40 @@ type Package struct {
 	// tags:openwrt:abiversion, which ImageBuilder needs to resolve the dependency.
 	ABIVersion string `yaml:"abiversion"`
 }
+
+// Noarch is the architecture of a package that carries no compiled code.
+//
+// It is not "all". apk rejects "all" as uninstallable, which is why OpenWrt's own
+// package-pack.mk rewrites LUCI_PKGARCH:=all into arch:noarch on its way to mkpkg.
+const Noarch = "noarch"
+
+// PkgArch is a package's architecture: the single value "noarch", or a list of the
+// architectures a compiled package is built for.
+//
+// A static binary — Go, Rust, anything with no libc dependency to cross-link —
+// needs no OpenWrt SDK, only the right GOARCH. Restricting the SDK-less path to
+// noarch would have excluded that whole class for no reason.
+type PkgArch struct {
+	List []string
+}
+
+func (a *PkgArch) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind == yaml.ScalarNode {
+		a.List = []string{node.Value}
+		return nil
+	}
+	if node.Kind != yaml.SequenceNode {
+		return errors.New("arch: want an architecture name or a list of them")
+	}
+	return node.Decode(&a.List)
+}
+
+// IsNoarch reports whether this package is architecture-independent.
+func (a PkgArch) IsNoarch() bool {
+	return len(a.List) == 1 && a.List[0] == Noarch
+}
+
+func (a PkgArch) String() string { return strings.Join(a.List, ", ") }
 
 // I18n describes a package's translation catalogues.
 type I18n struct {

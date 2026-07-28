@@ -201,26 +201,8 @@ func (c *Config) validatePackages(path string) error {
 		}
 		seen[name] = true
 
-		if p.Arch == "all" {
-			return &Error{
-				Path: path,
-				Msg:  fmt.Sprintf("%s.arch is \"all\"", where),
-				Hint: "apk rejects \"all\" as uninstallable; use \"noarch\" (this is the translation OpenWrt's own package-pack.mk applies to LUCI_PKGARCH:=all)",
-			}
-		}
-		if p.Arch == "" {
-			return &Error{
-				Path: path,
-				Msg:  fmt.Sprintf("%s.arch is required", where),
-				Hint: "use \"noarch\" for architecture-independent packages",
-			}
-		}
-		if p.Arch != "noarch" {
-			return &Error{
-				Path: path,
-				Msg:  fmt.Sprintf("%s.arch is %q, but only noarch packages can be built without the SDK", where, p.Arch),
-				Hint: "a package for a specific architecture needs a cross toolchain; SDK builds are not implemented yet",
-			}
+		if err := validateArch(path, where, p); err != nil {
+			return err
 		}
 
 		if p.Files == "" {
@@ -228,6 +210,17 @@ func (c *Config) validatePackages(path string) error {
 				Path: path,
 				Msg:  fmt.Sprintf("%s.files is required for a mkpkg build", where),
 				Hint: "point it at a staged rootfs: the directory whose contents become the package payload",
+			}
+		}
+		// Two architectures cannot share one payload — if they could, the package
+		// would be noarch. Requiring the template makes the mistake impossible rather
+		// than merely detectable.
+		if len(p.Arch.List) > 1 && !strings.Contains(p.Files, ArchPlaceholder) {
+			return &Error{
+				Path: path,
+				Msg:  fmt.Sprintf("%s builds for %d architectures but `files:` names one directory", where, len(p.Arch.List)),
+				Hint: "put " + ArchPlaceholder + " in the path, e.g. files: ./staging/" + ArchPlaceholder +
+					"; a payload that is the same for every architecture is a noarch package",
 			}
 		}
 		if p.Version != "" && p.VersionFrom != "" {
@@ -278,6 +271,52 @@ func (c *Config) validatePackages(path string) error {
 					Hint: "valid types: " + strings.Join(scriptTypeList, ", "),
 				}
 			}
+		}
+	}
+	return nil
+}
+
+// ArchPlaceholder is substituted into `files:` for a per-architecture build.
+const ArchPlaceholder = "{arch}"
+
+// archNameRE is the shape of an OpenWrt architecture directory name.
+var archNameRE = regexp.MustCompile(`^[a-z0-9]+(_[a-z0-9.+-]+)*$`)
+
+func validateArch(path, where string, p Package) error {
+	if len(p.Arch.List) == 0 {
+		return &Error{
+			Path: path,
+			Msg:  fmt.Sprintf("%s.arch is required", where),
+			Hint: "use \"noarch\" for architecture-independent packages, or list the architectures a compiled package is built for",
+		}
+	}
+
+	seen := map[string]bool{}
+	for _, a := range p.Arch.List {
+		switch {
+		case a == "all":
+			return &Error{
+				Path: path,
+				Msg:  fmt.Sprintf("%s.arch is \"all\"", where),
+				Hint: "apk rejects \"all\" as uninstallable; use \"noarch\" (this is the translation OpenWrt's own package-pack.mk applies to LUCI_PKGARCH:=all)",
+			}
+		case a == "":
+			return errf(path, "%s.arch has an empty entry", where)
+		case !archNameRE.MatchString(a):
+			return errf(path, "%s.arch entry %q is not an architecture name", where, a)
+		case seen[a]:
+			return errf(path, "%s.arch lists %q twice", where, a)
+		}
+		seen[a] = true
+	}
+
+	// noarch means "installs anywhere"; naming it alongside a real architecture is
+	// a contradiction rather than a union.
+	if seen[Noarch] && len(p.Arch.List) > 1 {
+		return &Error{
+			Path: path,
+			Msg:  fmt.Sprintf("%s.arch mixes \"noarch\" with specific architectures", where),
+			Hint: "noarch already installs on every architecture; drop it, or drop the others",
 		}
 	}
 	return nil

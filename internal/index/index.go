@@ -208,6 +208,30 @@ func Signatures(ctx context.Context, tool *apk.Tool, dir, file string) ([]string
 	return out, nil
 }
 
+// Tree lists the built packages by architecture. A build directory holds one
+// subdirectory per architecture, because two architectures of the same package
+// share a filename: apk derives it from the name and version alone.
+func Tree(dir string) (map[string][]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string][]string{}
+	for _, e := range entries {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		pkgs, err := Packages(filepath.Join(dir, e.Name()))
+		if err != nil {
+			return nil, err
+		}
+		if len(pkgs) > 0 {
+			out[e.Name()] = pkgs
+		}
+	}
+	return out, nil
+}
+
 // Packages lists the .apk files in dir, sorted, without path prefixes.
 func Packages(dir string) ([]string, error) {
 	entries, err := os.ReadDir(dir)

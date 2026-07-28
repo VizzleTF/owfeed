@@ -34,7 +34,11 @@ type Request struct {
 	Root string
 	// Version is the already-resolved version. ResolveVersion produces it.
 	Version string
-	// OutDir receives the finished .apk.
+	// Arch is the architecture being built. It must be one of the package's own.
+	Arch string
+	// OutDir receives the finished .apk, under a subdirectory named for the
+	// architecture. Two architectures of one package share a filename — apk derives
+	// it from the name and version alone — so they cannot share a directory.
 	OutDir string
 	// SourceDateEpoch, when non-zero, is stamped on every staged file so the same
 	// inputs produce the same package bytes. Without it the payload carries the
@@ -64,24 +68,33 @@ func Build(ctx context.Context, tool *apk.Tool, req Request) (*Result, error) {
 	if err := meta.ValidateVersion(req.Version); err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
 	}
-	if err := meta.ValidateArch(p.Arch); err != nil {
+	arch := req.Arch
+	if arch == "" {
+		if len(p.Arch.List) != 1 {
+			return nil, fmt.Errorf("%s: builds for %s, so Request.Arch must say which", name, p.Arch)
+		}
+		arch = p.Arch.List[0]
+	}
+	if err := meta.ValidateArch(arch); err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
 	}
 
-	if err := os.MkdirAll(req.OutDir, 0o755); err != nil {
+	outDir := filepath.Join(req.OutDir, arch)
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return nil, err
 	}
 	// The staging tree is a sibling of the output so the finished package moves into
 	// place with a rename on the same filesystem.
-	stage, err := os.MkdirTemp(req.OutDir, ".owfeed-build-*")
+	stage, err := os.MkdirTemp(outDir, ".owfeed-build-*")
 	if err != nil {
 		return nil, err
 	}
 	defer os.RemoveAll(stage)
 
 	payload := filepath.Join(stage, payloadDir)
-	if err := copyTree(filepath.Join(req.Root, p.Files), payload, req.SourceDateEpoch); err != nil {
-		return nil, fmt.Errorf("%s: staging %s: %w", name, p.Files, err)
+	files := ExpandArch(p.Files, arch)
+	if err := copyTree(filepath.Join(req.Root, files), payload, req.SourceDateEpoch); err != nil {
+		return nil, fmt.Errorf("%s: staging %s: %w", name, files, err)
 	}
 	// Catalogues are compiled into the payload before the sidecars are generated,
 	// so they appear in the package's own file list exactly as an SDK build's would.
@@ -93,7 +106,7 @@ func Build(ctx context.Context, tool *apk.Tool, req Request) (*Result, error) {
 		return nil, fmt.Errorf("%s: %w", name, err)
 	}
 
-	args, err := mkpkgArgs(stage, req)
+	args, err := mkpkgArgs(stage, req, arch)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
 	}
@@ -109,7 +122,7 @@ func Build(ctx context.Context, tool *apk.Tool, req Request) (*Result, error) {
 		// success without producing anything.
 		return nil, fmt.Errorf("%s: apk mkpkg exited 0 but wrote no %s", name, file)
 	}
-	out := filepath.Join(req.OutDir, file)
+	out := filepath.Join(outDir, file)
 	if err := os.Rename(built, out); err != nil {
 		return nil, err
 	}
@@ -123,11 +136,16 @@ func Build(ctx context.Context, tool *apk.Tool, req Request) (*Result, error) {
 	return &Result{
 		Name:    name,
 		Version: req.Version,
-		Arch:    p.Arch,
+		Arch:    arch,
 		File:    out,
 		Notes:   notes,
 		Payload: catalogues,
 	}, nil
+}
+
+// ExpandArch fills the {arch} placeholder in a path.
+func ExpandArch(path, arch string) string {
+	return strings.ReplaceAll(path, config.ArchPlaceholder, arch)
 }
 
 // PackageFileName is the on-disk name of a built package, matching what OpenWrt's
@@ -145,7 +163,7 @@ const (
 // mkpkgArgs assembles the command line. Every path in it is relative to the staging
 // directory: apk may be running in a container where absolute host paths do not
 // exist, and the staging directory is the one thing mounted there.
-func mkpkgArgs(stage string, req Request) ([]string, error) {
+func mkpkgArgs(stage string, req Request, arch string) ([]string, error) {
 	p := req.Package
 	name := p.EffectiveName()
 
@@ -170,7 +188,7 @@ func mkpkgArgs(stage string, req Request) ([]string, error) {
 	info := []struct{ k, v string }{
 		{"name", name},
 		{"version", req.Version},
-		{"arch", p.Arch},
+		{"arch", arch},
 		{"description", p.Description},
 		{"license", firstNonEmpty(p.License, req.Feed.License)},
 		{"url", firstNonEmpty(p.URL, req.Feed.Homepage)},

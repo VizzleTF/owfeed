@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/VizzleTF/owfeed/internal/config"
 	"github.com/VizzleTF/owfeed/internal/index"
 	"github.com/VizzleTF/owfeed/internal/keys"
 )
@@ -40,11 +41,11 @@ func (a *app) index(ctx context.Context, args []string) error {
 		return err
 	}
 
-	pkgs, err := index.Packages(dist)
+	tree, err := index.Tree(dist)
 	if err != nil {
 		return wrap(exitIndex, err)
 	}
-	if len(pkgs) == 0 {
+	if len(tree) == 0 {
 		return fail(exitIndex, "%s holds no packages; run `owfeed build` first", dist)
 	}
 
@@ -77,20 +78,34 @@ func (a *app) index(ctx context.Context, args []string) error {
 		if !ok {
 			return fail(exitConflict, "owfeed.lock has no entry for release line %s; run `owfeed lock --update`", r.Line)
 		}
+		total := 0
 		for _, arch := range lr.Arches {
 			dir := filepath.Join(*out, expandLayout(c.Layout.Path, r.Line, arch))
 			if err := os.MkdirAll(dir, 0o755); err != nil {
 				return wrap(exitIndex, err)
 			}
-			// The same signed bytes go into every architecture directory. Copying
-			// after signing rather than before is not incidental: ECDSA signatures
-			// are randomised, so signing each copy separately would produce 35
-			// different files where subscribers should see one.
-			for _, p := range pkgs {
-				if err := copyFile(filepath.Join(dist, p), filepath.Join(dir, p)); err != nil {
-					return wrap(exitIndex, err)
+
+			// A noarch package goes into every architecture's directory, because a
+			// router reads exactly one index — its own — and would otherwise never
+			// see it. A package built for a specific architecture goes only into
+			// that one.
+			//
+			// Copying after signing rather than before is not incidental: ECDSA
+			// signatures are randomised, so signing each copy separately would
+			// produce 35 different files where subscribers should see one.
+			var placed []string
+			for _, src := range []string{config.Noarch, arch} {
+				for _, p := range tree[src] {
+					if err := copyFile(filepath.Join(dist, src, p), filepath.Join(dir, p)); err != nil {
+						return wrap(exitIndex, err)
+					}
+					placed = append(placed, p)
 				}
 			}
+			if len(placed) == 0 {
+				continue
+			}
+
 			res, err := index.Build(ctx, tool, index.Options{
 				Dir: dir, TrustDir: trustDir, Signer: signer,
 				Description: c.Feed.Title,
@@ -98,9 +113,10 @@ func (a *app) index(ctx context.Context, args []string) error {
 			if err != nil {
 				return wrap(exitIndex, err)
 			}
+			total += len(placed)
 			a.debugf("%s: %d packages, index %d bytes", dir, len(res.Packages), res.Size)
 		}
-		a.logf("%s: %d package(s) across %d architecture(s)", r.Line, len(pkgs), len(lr.Arches))
+		a.logf("%s: %d package placement(s) across %d architecture(s)", r.Line, total, len(lr.Arches))
 	}
 
 	// The public key belongs at the root of the feed, because that is the URL the
