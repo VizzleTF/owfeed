@@ -115,6 +115,25 @@ owfeed lock --update    # prints the diff; commit it
 `--frozen-lock` fails the build until you do. What your feed covers should not change without you
 seeing it.
 
+## I want to be sure it installs
+
+```sh
+owfeed smoke           # installs the built feed on a real OpenWrt image
+```
+
+`doctor` proves the tree is coherent. This proves a router accepts it — following your own published
+snippet, and failing if `apk` asks for `--allow-untrusted`. They are different claims.
+
+## I want to check what is already live
+
+```sh
+owfeed verify out      # fetches the published feed over its documented URL
+```
+
+Catches a redirect apk will not follow, a package the live index names that is missing or the wrong
+size, and — given the tree about to replace it — a version being republished with different
+contents.
+
 ## Something broke
 
 ```sh
@@ -153,8 +172,8 @@ owfeed refuses each of these. Every one has burned a real maintainer.
 
 ## Not there yet
 
-SDK builds · GitHub Action and reusable workflow · Cloudflare R2 and rsync · `verify` against a live
-URL · `smoke` inside `openwrt/rootfs` · SBOM · key rotation commands.
+SDK builds · GitHub Action and reusable workflow · Cloudflare R2 and rsync · SBOM · key rotation
+commands · reusing an already-published package instead of re-signing it unchanged.
 
 ---
 
