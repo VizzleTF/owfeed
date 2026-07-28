@@ -125,6 +125,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = a.smoke(ctx, cmdArgs)
 	case "verify":
 		err = a.verify(ctx, cmdArgs)
+	case "verify-artifact":
+		err = a.verifyArtifact(cmdArgs)
 	case "help", "-h", "--help":
 		usage(stdout)
 		return exitOK
@@ -194,6 +196,7 @@ Commands:
   publish     gate the tree on those checks and hand it to the target
   smoke       install the built feed on a real OpenWrt image
   verify      check the published feed from outside, over its documented URL
+  verify-artifact  check an upstream release against its author's signature
   install-snippet  print the instructions your subscribers follow
   version     print the version
 
