@@ -151,10 +151,16 @@ func resolve(in Input) (release, pkg string) {
 		pkg = in.Config.Packages[0].EffectiveName()
 	}
 	if pkg == "" {
-		pkg = "<package>"
+		// A feed that only carries other people's work lists no packages, so there
+		// is no name to suggest. Placeholder, and callers that compare a README
+		// against this must not expect it verbatim.
+		pkg = PackagePlaceholder
 	}
 	return release, pkg
 }
+
+// PackagePlaceholder stands in for a package name the config does not know.
+const PackagePlaceholder = "<package>"
 
 func expand(layout, release, arch string) string {
 	return config.ExpandLayout(layout, release, arch)

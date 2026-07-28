@@ -289,6 +289,13 @@ func checkDocDrift(r *Report, in Input) {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
+		// A line the snippet could not fill in is not a line a README should repeat.
+		// A feed that only carries other people's work lists no packages, so the
+		// snippet has no name to put in `apk add` -- and demanding a placeholder
+		// appear verbatim would make good documentation the finding.
+		if strings.Contains(line, snippet.PackagePlaceholder) {
+			continue
+		}
 		if !strings.Contains(string(body), line) {
 			missing = append(missing, line)
 		}

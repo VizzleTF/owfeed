@@ -17,7 +17,7 @@ outcome, not a bug to work around.
 
 `actions/checkout@v4` is a moving target by design, and for a checkout that is a
 reasonable trade. This tool signs feeds. A consumer who pins
-`feed.yml@v0.1.0` should get exactly the `setup` that was reviewed alongside it,
+`feed.yml@vX.Y.Z` should get exactly the `setup` that was reviewed alongside it,
 because the alternative is that the code which fetches and verifies the signing tool
 can change under a pin that looks exact.
 

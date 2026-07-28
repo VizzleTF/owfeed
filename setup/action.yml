@@ -10,7 +10,7 @@ description: Install a verified owfeed binary and put it on PATH.
 inputs:
   version:
     description: >-
-      Release tag to install, such as v0.1.0, or "latest". Pin a tag: "latest"
+      Release tag to install, such as v0.1.3, or "latest". Pin a tag: "latest"
       means the tool that signs your feed can change under you between runs.
     required: false
     default: latest

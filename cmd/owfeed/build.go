@@ -44,6 +44,14 @@ func (a *app) build(ctx context.Context, args []string) error {
 		return wrap(exitConfig, err)
 	}
 
+	// A feed that carries only other people's work builds nothing: every package is
+	// fetched already built and signed by its author. Saying so and stopping is
+	// right; fetching an apk toolchain to package zero things is not.
+	if len(c.Packages) == 0 {
+		a.logf("no packages to build; everything this feed carries is fetched already built")
+		return nil
+	}
+
 	built := 0
 	needAPK := false
 	for _, r := range c.Releases {

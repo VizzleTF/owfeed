@@ -128,11 +128,6 @@ func TestRejects(t *testing.T) {
 			wantSub: "build.sdk.release",
 		},
 		{
-			name:    "no packages",
-			src:     minimal[:strings.Index(minimal, "packages:")],
-			wantSub: "nothing to build",
-		},
-		{
 			name:    "both version and version-from",
 			src:     strings.Replace(minimal, "version: 1.2.3-r1", "version: 1.2.3-r1\n    version-from: git-describe", 1),
 			wantSub: "version-from",
@@ -307,5 +302,20 @@ packages:
 	}
 	if c.Releases[1].Format != FormatIPK {
 		t.Errorf("releases[1].format = %q, want ipk", c.Releases[1].Format)
+	}
+}
+
+// A feed that carries only other people's work builds nothing at all: every package
+// is fetched already built and signed by its author, which is the shape a feed
+// should be aiming for -- rebuilding someone's package ships something they never
+// tested. This used to be a config error, which made that shape unreachable.
+func TestNoPackagesIsAFeedThatOnlyCarries(t *testing.T) {
+	src := minimal[:strings.Index(minimal, "packages:")]
+	c, err := parse(t, src)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(c.Packages) != 0 {
+		t.Errorf("packages = %d, want none", len(c.Packages))
 	}
 }

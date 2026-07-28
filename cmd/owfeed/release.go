@@ -43,7 +43,7 @@ func (a *app) release(args []string) error {
 	}
 
 	res, err := release.Build(release.Options{
-		Dir: dir, Repo: *repo, Tag: *tag, Key: key, Now: sourceDate(),
+		Dir: dir, Repo: *repo, Tag: *tag, Key: key, Now: releaseDate(),
 	})
 	if err != nil {
 		return wrap(exitBuild, err)
@@ -77,15 +77,26 @@ func loadReleaseKey(spec string) (*usign.PrivateKey, error) {
 	}
 }
 
-// sourceDate honours SOURCE_DATE_EPOCH so a manifest is reproducible along with
-// everything else it describes.
-func sourceDate() time.Time {
-	if raw := os.Getenv("SOURCE_DATE_EPOCH"); raw != "" {
+// releaseDate is when the release was made, and deliberately not SOURCE_DATE_EPOCH.
+//
+// That variable exists so a package's identity depends on what it contains and
+// nothing else -- apk hashes the payload and mkpkg records mtimes, so a fixed epoch
+// keeps a rebuild of identical content from claiming to be new. A feed sets it to a
+// constant for exactly that reason.
+//
+// A manifest is not a package. Its date says when a release was cut, and honouring
+// SOURCE_DATE_EPOCH here put "2023-11-14" in a signed document describing a release
+// made in 2026, because the feed's constant was in the environment. A signed
+// statement asserting a date it knows to be false is worse than no date at all, and
+// nothing depends on the manifest being byte-reproducible -- every hash it records
+// already is.
+func releaseDate() time.Time {
+	if raw := os.Getenv("OWFEED_RELEASE_DATE"); raw != "" {
 		if secs, err := strconv.ParseInt(raw, 10, 64); err == nil {
 			return time.Unix(secs, 0).UTC()
 		}
 	}
-	return time.Time{}
+	return time.Now().UTC()
 }
 
 func envAny(names ...string) string {

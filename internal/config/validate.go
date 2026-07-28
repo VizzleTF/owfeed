@@ -184,9 +184,12 @@ func (c *Config) validateSigning(path string) error {
 }
 
 func (c *Config) validatePackages(path string) error {
-	if len(c.Packages) == 0 {
-		return errf(path, "packages is empty; there is nothing to build")
-	}
+	// An empty list is legal. A feed that carries other people's work builds nothing
+	// at all: every package is fetched already built and signed by its author, which
+	// is the shape a feed should be aiming for -- rebuilding someone's package ships
+	// something they never tested. `owfeed build` says there is nothing to do and
+	// stops; what actually reaches subscribers is checked against the tree, by
+	// `owfeed index` and by whatever the feed uses to confirm its fetch was complete.
 
 	seenLine := map[string]bool{}
 	for _, r := range c.Releases {
