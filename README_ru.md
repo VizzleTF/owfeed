@@ -136,9 +136,9 @@ URL отдаёт 404, прямо сейчас живёт в природе.
 ```yaml
 jobs:
   publish:
-    uses: VizzleTF/owfeed/.github/workflows/feed.yml@v0.1.0
+    uses: VizzleTF/owfeed/.github/workflows/feed.yml@v0.1.1
     with:
-      owfeed-version: v0.1.0
+      owfeed-version: v0.1.1
       smoke-releases: "25.12 24.10"
     secrets:
       sign-key: ${{ secrets.OWFEED_SIGN_KEY }}
@@ -153,8 +153,8 @@ jobs:
 Если шаги нужны свои — берите инструмент, оставьте форму:
 
 ```yaml
-- uses: VizzleTF/owfeed/setup@v0.1.0
-  with: { version: v0.1.0 }
+- uses: VizzleTF/owfeed/setup@v0.1.1
+  with: { version: v0.1.1 }
 - run: owfeed --frozen-lock build && owfeed sign && owfeed index
   env:
     OWFEED_SIGN_KEY: ${{ secrets.OWFEED_SIGN_KEY }}

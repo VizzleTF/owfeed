@@ -23,9 +23,9 @@ name: owfeed feed
 #
 #   jobs:
 #     publish:
-#       uses: VizzleTF/owfeed/.github/workflows/feed.yml@v0.1.0
+#       uses: VizzleTF/owfeed/.github/workflows/feed.yml@v0.1.1
 #       with:
-#         owfeed-version: v0.1.0
+#         owfeed-version: v0.1.1
 #         pre-build: for d in packages/*/; do ./tools/fetch.sh "$d"; done
 #         post-index: ./tools/check-tree.sh
 #         smoke-releases: "25.12 24.10"
@@ -105,7 +105,7 @@ jobs:
       SOURCE_DATE_EPOCH: ${{ inputs.source-date-epoch }}
     steps:
       - uses: actions/checkout@v7
-      - uses: VizzleTF/owfeed/setup@v0.1.0
+      - uses: VizzleTF/owfeed/setup@v0.1.1
         with:
           version: ${{ inputs.owfeed-version }}
 
@@ -144,7 +144,7 @@ jobs:
       SOURCE_DATE_EPOCH: ${{ inputs.source-date-epoch }}
     steps:
       - uses: actions/checkout@v7
-      - uses: VizzleTF/owfeed/setup@v0.1.0
+      - uses: VizzleTF/owfeed/setup@v0.1.1
         with:
           version: ${{ inputs.owfeed-version }}
 
