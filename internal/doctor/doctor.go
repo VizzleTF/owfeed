@@ -119,6 +119,11 @@ type Input struct {
 	Identity keys.Identity
 	// PubKeyName is the file the public key is published as.
 	PubKeyName string
+	// RequireOrigin makes a package that does not say where it came from an error.
+	// A feed carrying only its author's own work does not need this; one carrying
+	// other people's does, because the URL in the installed package is the only
+	// thing telling a user who to go to when it misbehaves.
+	RequireOrigin bool
 }
 
 // Run executes every check.
@@ -130,6 +135,7 @@ func Run(ctx context.Context, in Input) (*Report, error) {
 	checkConffileCoverage(r, in)
 	checkABI(r, in)
 	checkDocDrift(r, in)
+	checkOrigin(r, in)
 
 	if err := checkTree(ctx, r, in); err != nil {
 		return nil, err
@@ -292,6 +298,31 @@ func checkDocDrift(r *Report, in Input) {
 			"so a documented URL that 404s can survive for months",
 		Fix: "replace the block with the output of `owfeed install-snippet`",
 	})
+}
+
+// 211: in a feed of other people's packages, every package says whose it is.
+//
+// The URL survives into the index and into what `apk info` shows on the router, so
+// it is the one place a user can look to find out who publishes what they just
+// installed. A feed that carries third-party work and does not record it is asking
+// its subscribers to trust an anonymous list.
+func checkOrigin(r *Report, in Input) {
+	if !in.RequireOrigin {
+		return
+	}
+	for _, p := range in.Config.Packages {
+		r.Checked++
+		if p.URL != "" || in.Config.Feed.Homepage != "" {
+			continue
+		}
+		r.add(Finding{
+			ID: "OWF211", Severity: Error, Where: p.EffectiveName(),
+			What: "does not say where it comes from",
+			Why: "the URL is carried into the index and shown by `apk info`, so it is the only thing that tells a user " +
+				"who published what they installed",
+			Fix: "set `url:` to the package's repository",
+		})
+	}
 }
 
 // indexEntry is one package as the index describes it.

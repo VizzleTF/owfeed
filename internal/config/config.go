@@ -184,14 +184,22 @@ type Package struct {
 	// them all.
 	Files string `yaml:"files"`
 
-	Description string   `yaml:"description"`
-	License     string   `yaml:"license"`
-	URL         string   `yaml:"url"`
-	Maintainer  string   `yaml:"maintainer"`
-	Depends     []string `yaml:"depends"`
-	Provides    []string `yaml:"provides"`
-	Replaces    []string `yaml:"replaces"`
-	Recommends  []string `yaml:"recommends"`
+	Description string `yaml:"description"`
+	License     string `yaml:"license"`
+	// URL is where the package comes from. In a feed that carries other people's
+	// work this is not decoration: it is the only thing in the installed package
+	// that says who to go to when it misbehaves, and `owfeed doctor` can be told to
+	// require it.
+	URL string `yaml:"url"`
+	// RepoCommit is the commit the package was built from, recorded in apk's
+	// repo-commit field. "env:VAR" reads it from the environment, which is how a CI
+	// job passes $CI_COMMIT_SHA or $GITHUB_SHA without the value being committed.
+	RepoCommit string   `yaml:"repo-commit"`
+	Maintainer string   `yaml:"maintainer"`
+	Depends    []string `yaml:"depends"`
+	Provides   []string `yaml:"provides"`
+	Replaces   []string `yaml:"replaces"`
+	Recommends []string `yaml:"recommends"`
 
 	// Conflicts are packages that must not be installed alongside this one. apk
 	// spells a conflict as a negative dependency, so these become !name entries in

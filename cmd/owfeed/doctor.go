@@ -13,6 +13,7 @@ func (a *app) doctor(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("owfeed doctor", flag.ContinueOnError)
 	fs.SetOutput(a.err)
 	failOn := fs.String("fail-on", "error", "lowest severity that fails the run: warn or error")
+	requireOrigin := fs.Bool("require-origin", false, "every package must say which repository it comes from")
 	if err := fs.Parse(args); err != nil {
 		return wrap(exitConfig, err)
 	}
@@ -55,13 +56,14 @@ func (a *app) doctor(ctx context.Context, args []string) error {
 	}
 
 	report, err := doctor.Run(ctx, doctor.Input{
-		Config:     c,
-		Lock:       l,
-		Tool:       tool,
-		Root:       a.root(),
-		OutDir:     out,
-		Identity:   id,
-		PubKeyName: c.Feed.Name + ".pem",
+		Config:        c,
+		Lock:          l,
+		Tool:          tool,
+		Root:          a.root(),
+		OutDir:        out,
+		Identity:      id,
+		PubKeyName:    c.Feed.Name + ".pem",
+		RequireOrigin: *requireOrigin,
 	})
 	if err != nil {
 		// A check that cannot run counts as failed. A green report that means

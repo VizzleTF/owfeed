@@ -193,6 +193,7 @@ func mkpkgArgs(stage string, req Request, arch string) ([]string, error) {
 		{"license", firstNonEmpty(p.License, req.Feed.License)},
 		{"url", firstNonEmpty(p.URL, req.Feed.Homepage)},
 		{"maintainer", firstNonEmpty(p.Maintainer, req.Feed.Maintainer)},
+		{"repo-commit", repoCommit(p)},
 		{"depends", strings.Join(depends(p), " ")},
 		{"provides", strings.Join(provides(p), " ")},
 		{"replaces", strings.Join(p.Replaces, " ")},
@@ -224,6 +225,16 @@ func mkpkgArgs(stage string, req Request, arch string) ([]string, error) {
 
 	args = append(args, "--files", payloadDir, "--output", PackageFileName(name, req.Version))
 	return args, nil
+}
+
+// repoCommit resolves the commit a package was built from. Reading it from the
+// environment is the normal case: CI knows the commit, and pinning it in the config
+// would mean committing a value that changes with every commit.
+func repoCommit(p config.Package) string {
+	if v, ok := strings.CutPrefix(p.RepoCommit, "env:"); ok {
+		return os.Getenv(v)
+	}
+	return p.RepoCommit
 }
 
 // depends folds conflicts into the dependency list, which is how apk spells them:
