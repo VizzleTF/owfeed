@@ -115,6 +115,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = a.index(ctx, cmdArgs)
 	case "doctor":
 		err = a.doctor(ctx, cmdArgs)
+	case "init":
+		err = a.init_(cmdArgs)
+	case "install-snippet":
+		err = a.installSnippet(cmdArgs)
+	case "publish":
+		err = a.publish(ctx, cmdArgs)
 	case "help", "-h", "--help":
 		usage(stdout)
 		return exitOK
@@ -174,12 +180,15 @@ Usage:
   owfeed [flags] <command> [arguments]
 
 Commands:
+  init        scaffold owfeed.yml in this directory
   keygen      create the feed's signing key
   lock        derive the architecture matrix and write owfeed.lock
   build       build every configured package into a flat directory
   sign        sign the packages in a directory
   index       fan out the signed packages and build a signed index per architecture
   doctor      check the built tree against everything that has burned a feed before
+  publish     gate the tree on those checks and hand it to the target
+  install-snippet  print the instructions your subscribers follow
   version     print the version
 
 Flags:

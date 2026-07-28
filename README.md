@@ -30,21 +30,29 @@ The result, as of mid-2026:
 Every feed that does exist is a hand-rolled GitHub Actions workflow wrapping `openwrt/gh-action-sdk`
 plus a copy-pasted deploy step, with a hardcoded 36-entry architecture matrix.
 
-## What owfeed will do
+## What owfeed does
 
-A single Go binary, a GitHub Action, and a reusable workflow — identical behaviour locally and in CI.
+A single Go binary — identical behaviour locally and in CI. Each stage takes a directory in and
+leaves a directory behind, with no hidden state between them, so any of them runs on its own.
 
 ```
-owfeed init          scaffold owfeed.yml + workflow
-owfeed keygen        EC prime256v1 SEC1 keypair, correct by construction
-owfeed build         SDK builds, or SDK-less `apk mkpkg` for noarch packages
-owfeed sign          sign every .apk, not just the index
-owfeed index         signed packages.adb + index.json + sha256sums + SBOM
-owfeed publish       GitHub Pages / Cloudflare R2 / rsync — packages first, index last
-owfeed doctor        ~25 checks that catch the traps below before your users do
-owfeed verify        black-box check of the published feed, from outside
-owfeed smoke         a real `apk add` inside openwrt/rootfs, without --allow-untrusted
+owfeed init             scaffold owfeed.yml and .gitignore
+owfeed keygen           EC prime256v1 SEC1 keypair, correct by construction
+owfeed lock             derive the architecture matrix; never hardcode it
+owfeed build            SDK-less `apk mkpkg` from a staged rootfs
+owfeed sign             sign every .apk, not just the index
+owfeed index            fan out and build a signed packages.adb + index.json + sha256sums
+owfeed doctor           numbered checks that catch the traps below before your users do
+owfeed publish          gate the tree on those checks; refuses to publish a broken one
+owfeed install-snippet  the instructions your subscribers follow, from one source
 ```
+
+One noarch package across all 35 architectures — built, signed, indexed and laid out for
+publication — takes about 25 seconds on a laptop, against 35 SDK builds today. The result installs on
+`openwrt/rootfs:x86-64-25.12.4` with `apk add`, no `--allow-untrusted`.
+
+Still to come: SDK builds, a GitHub Action and reusable workflow, Cloudflare R2 and rsync targets,
+`verify` against a live URL, `smoke` inside `openwrt/rootfs`, and an SBOM.
 
 ### Things it refuses to let you get wrong
 
