@@ -123,6 +123,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = a.publish(ctx, cmdArgs)
 	case "smoke":
 		err = a.smoke(ctx, cmdArgs)
+	case "verify":
+		err = a.verify(ctx, cmdArgs)
 	case "help", "-h", "--help":
 		usage(stdout)
 		return exitOK
@@ -191,6 +193,7 @@ Commands:
   doctor      check the built tree against everything that has burned a feed before
   publish     gate the tree on those checks and hand it to the target
   smoke       install the built feed on a real OpenWrt image
+  verify      check the published feed from outside, over its documented URL
   install-snippet  print the instructions your subscribers follow
   version     print the version
 
