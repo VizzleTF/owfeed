@@ -140,7 +140,7 @@ $APK mkndx --allow-untrusted --sign-key bad.pem --output z.adb ./h.apk
 #   z.adb not created
 ```
 
-## Index magic is `ADBd`
+## Index magic is `ADBd`, and the SDK's apk cannot produce anything else
 
 Default compression is deflate, which is the only thing OpenWrt's on-device apk can
 read (it is built `-Dzstd=disabled`):
@@ -149,6 +149,22 @@ read (it is built `-Dzstd=disabled`):
 head -c 4 one.adb | od -c | head -1
 #   0000000   A   D   B   d
 ```
+
+The host apk extracted from the SDK is built the same way, so the zstd trap is not
+merely avoidable there — it is unreachable:
+
+```sh
+$APK mkndx --allow-untrusted --compression zstd --output z.adb ./h.apk
+#   ERROR: command line: invalid argument for option 'compression': 'zstd'
+#   exit=1
+$APK mkndx --allow-untrusted --compression deflate --output d.adb ./h.apk
+#   Index has 1 packages (of which 1 are new)
+```
+
+This is a second payoff of insisting on the version-matched SDK toolchain rather
+than whatever apk happens to be installed: Alpine's apk, or any build with zstd
+compiled in, will happily write an index that parses on the build host and dies on
+every router with "ADB compression not supported".
 
 ## `installed-size` and `file-size` are computed, not supplied
 

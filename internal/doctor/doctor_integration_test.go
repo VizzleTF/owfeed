@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/VizzleTF/owfeed/internal/apk"
 	"github.com/VizzleTF/owfeed/internal/build"
 	"github.com/VizzleTF/owfeed/internal/config"
 	"github.com/VizzleTF/owfeed/internal/doctor"
@@ -28,6 +29,8 @@ type fixture struct {
 	in       doctor.Input
 	dist     string
 	indexDir string
+	signer   index.Signer
+	trustDir string
 }
 
 func newFixture(t *testing.T) fixture {
@@ -95,6 +98,8 @@ func newFixture(t *testing.T) fixture {
 	}
 
 	return fixture{
+		signer:   signer,
+		trustDir: trustDir,
 		in: doctor.Input{
 			Config:     cfg,
 			Lock:       &lock.Lock{Releases: []lock.Release{{Line: "25.12", Arches: []string{"x86_64"}}}},
@@ -241,5 +246,62 @@ func copyInto(t *testing.T, src, dst string) {
 	}
 	if err := os.WriteFile(dst, b, 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// The zstd trap turns out to be structurally impossible on the path owfeed uses.
+// OpenWrt builds apk with -Dzstd=disabled, and the host apk extracted from the SDK
+// is built the same way, so it cannot emit an index the device could not read even
+// if asked to. This is the payoff of insisting on the version-matched SDK toolchain
+// rather than whatever apk is on the machine.
+func TestIntegrationSDKAPKCannotProduceZstd(t *testing.T) {
+	f := newFixture(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	res, err := f.in.Tool.Run(ctx, apk.Invocation{
+		Workdir: f.indexDir, KeyDir: f.signer.KeyDir, TrustDir: f.trustDir,
+		Args: []string{
+			"--keys-dir", apk.TrustDirRef(), "mkndx",
+			"--compression", "zstd",
+			"--sign-key", apk.KeyRef(f.signer.KeyName),
+			"--output", "zstd.adb",
+			"./" + build.PackageFileName(pkgName, pkgVersion),
+		},
+	})
+	if err != nil {
+		t.Fatalf("running mkndx: %v", err)
+	}
+	if res.ExitCode == 0 {
+		t.Errorf("this apk accepted --compression zstd; the resulting index would fail on every router")
+	}
+	if !strings.Contains(res.Stderr, "invalid argument") {
+		t.Errorf("rejection came from somewhere unexpected: %s", res.Stderr)
+	}
+}
+
+// 401 still earns its place for a tree that arrived from somewhere else, where the
+// index was produced by an apk that does have zstd compiled in. Corrupting the magic
+// is the closest reachable stand-in.
+func TestIntegrationCatchesUnreadableIndex(t *testing.T) {
+	f := newFixture(t)
+
+	path := filepath.Join(f.indexDir, index.IndexFile)
+	adb, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	copy(adb[:4], "ADBz")
+	if err := os.WriteFile(path, adb, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	r := f.run(t)
+	if !hasID(r, "OWF401") {
+		t.Errorf("doctor did not report OWF401 for a non-deflate index:\n%s", render(r))
+	}
+	if !r.Failed(doctor.Error) {
+		t.Error("an unreadable index did not fail the run")
 	}
 }

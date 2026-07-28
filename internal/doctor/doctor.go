@@ -25,6 +25,7 @@ import (
 	"github.com/VizzleTF/owfeed/internal/keys"
 	"github.com/VizzleTF/owfeed/internal/lock"
 	"github.com/VizzleTF/owfeed/internal/meta"
+	"github.com/VizzleTF/owfeed/internal/snippet"
 )
 
 // Severity orders findings.
@@ -128,6 +129,7 @@ func Run(ctx context.Context, in Input) (*Report, error) {
 	checkDescriptions(r, in)
 	checkConffileCoverage(r, in)
 	checkABI(r, in)
+	checkDocDrift(r, in)
 
 	if err := checkTree(ctx, r, in); err != nil {
 		return nil, err
@@ -245,6 +247,53 @@ func checkABI(r *Report, in Input) {
 	}
 }
 
+// 701: the documented instructions have to be the instructions.
+//
+// This is a live bug in a major feed today: its README sends people to /25.12/
+// while its deploy writes /openwrt-25.12/, so the documented URL 404s and has done
+// for months. Nobody notices, because the person who wrote the README is the one
+// person who never follows it.
+//
+// A README that says nothing about the feed is not a finding. One that documents
+// it and disagrees with what owfeed would publish is.
+func checkDocDrift(r *Report, in Input) {
+	readme := filepath.Join(in.Root, "README.md")
+	body, err := os.ReadFile(readme)
+	if err != nil {
+		return
+	}
+	base := strings.TrimSuffix(in.Config.Feed.URL, "/")
+	if base == "" || !strings.Contains(string(body), base) {
+		return
+	}
+
+	r.Checked++
+	want := snippet.Shell(snippet.Input{Config: in.Config})
+
+	var missing []string
+	for _, line := range strings.Split(want, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if !strings.Contains(string(body), line) {
+			missing = append(missing, line)
+		}
+	}
+	if len(missing) == 0 {
+		return
+	}
+
+	r.add(Finding{
+		ID: "OWF701", Severity: Error, Where: "README.md",
+		What: fmt.Sprintf("documents this feed but not the way owfeed publishes it; %d line(s) differ, starting with:\n      %s",
+			len(missing), missing[0]),
+		Why: "the person who wrote the instructions is the one person who never follows them, " +
+			"so a documented URL that 404s can survive for months",
+		Fix: "replace the block with the output of `owfeed install-snippet`",
+	})
+}
+
 // indexEntry is one package as the index describes it.
 type indexEntry struct {
 	Name     string `json:"name"`
@@ -322,7 +371,16 @@ func checkIndexDir(ctx context.Context, r *Report, in Input, dir string, arches 
 	r.Checked++
 	signers, err := index.Signatures(ctx, in.Tool, dir, index.IndexFile)
 	if err != nil {
-		return err
+		// An index apk cannot read at all is a finding about the index, not a
+		// failure of the run: reporting it alongside everything else is more use
+		// than stopping here.
+		r.add(Finding{
+			ID: "OWF403", Severity: Error, Where: where,
+			What: "apk cannot read this index: " + err.Error(),
+			Why:  "subscribers run the same code on it during `apk update`",
+			Fix:  "rebuild it with `owfeed index`",
+		})
+		return nil
 	}
 	if !containsID(signers, in.Identity) {
 		r.add(Finding{

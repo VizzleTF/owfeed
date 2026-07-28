@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/VizzleTF/owfeed/internal/config"
+	"github.com/VizzleTF/owfeed/internal/snippet"
 )
 
 func input(t *testing.T, pkgs ...config.Package) Input {
@@ -143,5 +144,50 @@ func TestReportSeverityGate(t *testing.T) {
 	}
 	if got := r.Worst(); got != Warn {
 		t.Errorf("Worst = %s, want warn", got)
+	}
+}
+
+// 701 catches the live bug in a major feed today: its README sends people to
+// /25.12/ while its deploy writes /openwrt-25.12/, so the documented URL 404s.
+func TestDocDrift(t *testing.T) {
+	in := input(t, config.Package{Name: "luci-app-demo"})
+	in.Config.Feed.URL = "https://feed.example.org"
+	in.Config.Layout.Path = config.DefaultLayoutPath
+	in.Config.Releases = []config.Release{{Line: "25.12", Default: true}}
+	readme := filepath.Join(in.Root, "README.md")
+
+	// A README that documents the feed with the wrong path.
+	drifted := "# Demo\n\n```sh\n" +
+		"wget https://feed.example.org/demofeed.pem -O /etc/apk/keys/demofeed.pem\n" +
+		"echo \"https://feed.example.org/openwrt-25.12/$(cat /etc/apk/arch)/packages.adb\" > /etc/apk/repositories.d/demofeed.list\n" +
+		"```\n"
+	if err := os.WriteFile(readme, []byte(drifted), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := &Report{}
+	checkDocDrift(r, in)
+	if len(r.Findings) != 1 || r.Findings[0].ID != "OWF701" {
+		t.Fatalf("findings = %v, want OWF701", ids(r))
+	}
+
+	// The generated snippet itself must satisfy the check, or the fix it recommends
+	// would not work.
+	if err := os.WriteFile(readme, []byte(snippet.Markdown(snippet.Input{Config: in.Config})), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r = &Report{}
+	checkDocDrift(r, in)
+	if len(r.Findings) != 0 {
+		t.Errorf("the output of install-snippet does not satisfy its own check: %v\n%s", ids(r), r.Findings[0])
+	}
+
+	// A README that says nothing about the feed is not this check's business.
+	if err := os.WriteFile(readme, []byte("# Demo\n\nA theme.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r = &Report{}
+	checkDocDrift(r, in)
+	if len(r.Findings) != 0 {
+		t.Errorf("a README that does not document the feed was reported: %v", ids(r))
 	}
 }
