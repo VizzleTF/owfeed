@@ -2,6 +2,23 @@
 
 Dates are when the tag was cut. Anything not listed is documentation or tests.
 
+## v0.1.7 — 2026-07-28
+
+Both of these were found by the first real run of `feed.yml`, which is the point
+of having had one.
+
+- **Fixed:** under `dry-run`, the throwaway keys were exported inside the signing
+  step and shredded at the end of it, so every later stage ran without them. A
+  feed's config names those variables — `signing.usign-key: env:OWFEED_USIGN_KEY`
+  — so `owfeed doctor` exited 4 on a key that was empty by the time it looked.
+  They go into the job's environment now, masked, and still never leave the runner.
+- **Fixed:** the `check` job declares `permissions: contents: read`. A called
+  workflow is validated as a whole, so a caller has to grant the ceiling the
+  publish job asks for even when only the check job will run; narrowing here is
+  what keeps that grant off everything that actually executes. The usage comment
+  says so, because a check job declaring `pages: write` otherwise reads as a
+  mistake.
+
 ## v0.1.6 — 2026-07-28
 
 - `owfeed releases` reports what the download server publishes per line and which

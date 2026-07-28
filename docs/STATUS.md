@@ -40,7 +40,7 @@ feed, or released binaries — not by reading the code.
 - **The intake funnel** answers correctly when run by hand. No third party has used
   it yet, so the first genuine request is still the first genuine test.
 - **`feed.yml` in `dry-run` mode**, and its `digest` / `published` / `page-url`
-  outputs. `owfeed-packages` calls it on every pull request as of v0.1.6, so the
+  outputs. `owfeed-packages` calls it on every pull request as of v0.1.7, so the
   first real run is the next pull request opened there — most likely one the hourly
   update bot opens by itself.
 - **The nightly cross-check** (`.github/workflows/crosscheck.yml`). The comparison
