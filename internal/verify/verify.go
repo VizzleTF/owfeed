@@ -21,6 +21,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/VizzleTF/owfeed/internal/feedindex"
 )
 
 // Options configure a run.
@@ -36,6 +38,9 @@ type Options struct {
 	LayoutPath string
 	// Arch is the architecture whose index is fetched.
 	Arch string
+	// Format is "apk" or "ipk". The two publish different index files under
+	// different names, so even fetching one needs to know which.
+	Format string
 	// LocalDir is the tree about to be published. When set, every package it holds
 	// that is already live is compared against the published one.
 	LocalDir string
@@ -90,10 +95,7 @@ func Run(ctx context.Context, opts Options) (*Report, error) {
 	// 510: apk does not follow 30x with the stock uclient-fetch (openwrt#17180), so
 	// a redirect anywhere on these URLs is a feed that works in a browser and not on
 	// a router.
-	for _, u := range []string{
-		base + "/" + opts.FeedName + ".pem",
-		repo + "/packages.adb",
-	} {
+	for _, u := range redirectTargets(base, repo, opts) {
 		r.Checked++
 		resp, err := hc.Get(u)
 		if err != nil {
@@ -119,20 +121,25 @@ func Run(ctx context.Context, opts Options) (*Report, error) {
 		}
 	}
 
-	entries, err := liveIndex(ctx, hc, repo)
+	entries, err := liveIndex(ctx, hc, repo, opts.Format)
 	if err != nil {
 		return nil, err
 	}
 
 	var local map[string]string
 	if opts.LocalDir != "" {
-		if local, err = localHashes(opts.LocalDir, opts.LayoutPath, opts.Release, opts.Arch); err != nil {
+		if local, err = localHashes(opts.LocalDir, opts.LayoutPath, opts.Release, opts.Arch, opts.Format); err != nil {
 			return nil, err
 		}
 	}
 
 	for _, e := range entries {
-		name := fmt.Sprintf("%s-%s.apk", e.Name, e.Version)
+		name := e.File
+		if name == "" {
+			// apk stores no filename: it builds one from the name and version, so
+			// that is the name the file has to be published under.
+			name = fmt.Sprintf("%s-%s.apk", e.Name, e.Version)
+		}
 		u := repo + "/" + name
 
 		// 512: the index and the packages it names are cached independently by every
@@ -182,17 +189,18 @@ func Run(ctx context.Context, opts Options) (*Report, error) {
 			r.add(Finding{
 				ID:   "OWF513",
 				What: fmt.Sprintf("%s is already published with different content", name),
-				Why: "apk identifies a package by this hash, so two different payloads under one version are two packages claiming to be the same one; " +
-					"the local tree is self-consistent, which is why nothing else notices",
+				Why: "a package is identified by this hash — apk by the payload's, opkg by the file's — so two different contents under one version " +
+					"are two packages claiming to be the same one; the local tree is self-consistent, which is why nothing else notices",
 				Fix: "bump the revision — the -r<n> on the version — rather than replacing what is already out there",
 			})
 		}
 	}
 
-	// Re-signing changes a package's bytes without changing what it contains, so
-	// every republication invalidates whatever a CDN has cached for the packages
-	// that did not change. Worth saying once, not per package.
-	if r.Compared > 0 {
+	// Re-signing changes an apk package's bytes without changing what it contains,
+	// so every republication invalidates whatever a CDN has cached for packages that
+	// did not change. This does not apply to opkg: it has no per-package signature,
+	// so an unchanged package rebuilds byte for byte and stays cacheable.
+	if r.Compared > 0 && opts.Format != "ipk" {
 		r.Notes = append(r.Notes, fmt.Sprintf(
 			"%d package(s) are being republished unchanged; their bytes differ because ECDSA signatures are randomised, "+
 				"so any cached copy a CDN holds no longer matches the new index", r.Compared))
@@ -202,7 +210,18 @@ func Run(ctx context.Context, opts Options) (*Report, error) {
 
 // localHashes reads the payload identity of each package from the index owfeed
 // just wrote, so no apk toolchain is needed to make the comparison.
-func localHashes(dir, layout, release, arch string) (map[string]string, error) {
+func localHashes(dir, layout, release, arch, format string) (map[string]string, error) {
+	if format == "ipk" {
+		idx, err := feedindex.ReadDir(filepath.Join(dir, expandLayout(layout, release, arch)))
+		if err != nil {
+			return nil, nil
+		}
+		out := map[string]string{}
+		for _, e := range idx.Entries {
+			out[e.Name+" "+e.Version] = e.SHA256
+		}
+		return out, nil
+	}
 	b, err := os.ReadFile(filepath.Join(dir, expandLayout(layout, release, arch), "index.json"))
 	if os.IsNotExist(err) {
 		return nil, nil
@@ -223,14 +242,32 @@ func localHashes(dir, layout, release, arch string) (map[string]string, error) {
 	return out, nil
 }
 
+// redirectTargets are the URLs the install snippet sends people to. A redirect on
+// any of them is a feed that works in a browser and not on a router.
+func redirectTargets(base, repo string, opts Options) []string {
+	if opts.Format == "ipk" {
+		// opkg fetches the compressed index and its signature; the key is published
+		// under its own id.
+		return []string{repo + "/Packages.gz", repo + "/Packages.sig"}
+	}
+	return []string{base + "/" + opts.FeedName + ".pem", repo + "/packages.adb"}
+}
+
 type indexEntry struct {
-	Name     string `json:"name"`
-	Version  string `json:"version"`
-	Hashes   string `json:"hashes"`
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	// Hashes is apk's payload identity, or opkg's SHA256 of the file. Both answer
+	// "is this the same package", which is what the immutability check asks.
+	Hashes string `json:"hashes"`
+	// File is the name to fetch. apk stores none and derives it; opkg records it.
+	File     string `json:"-"`
 	FileSize int64  `json:"file-size"`
 }
 
-func liveIndex(ctx context.Context, hc *http.Client, repo string) ([]indexEntry, error) {
+func liveIndex(ctx context.Context, hc *http.Client, repo, format string) ([]indexEntry, error) {
+	if format == "ipk" {
+		return liveIndexIPK(ctx, hc, repo)
+	}
 	body, status, err := get(ctx, hc, repo+"/index.json")
 	if err != nil {
 		return nil, err
@@ -245,6 +282,49 @@ func liveIndex(ctx context.Context, hc *http.Client, repo string) ([]indexEntry,
 		return nil, fmt.Errorf("%s/index.json: %w", repo, err)
 	}
 	return doc.Packages, nil
+}
+
+// liveIndexIPK reads the text index opkg uses. It carries the filename and the
+// file's own SHA256, which makes the comparisons below stricter than on the apk
+// side rather than merely equivalent.
+func liveIndexIPK(ctx context.Context, hc *http.Client, repo string) ([]indexEntry, error) {
+	body, status, err := get(ctx, hc, repo+"/Packages")
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("GET %s/Packages: %d", repo, status)
+	}
+
+	var out []indexEntry
+	for _, stanza := range strings.Split(string(body), "\n\n") {
+		if strings.TrimSpace(stanza) == "" {
+			continue
+		}
+		var e indexEntry
+		for _, line := range strings.Split(stanza, "\n") {
+			key, value, ok := strings.Cut(line, ": ")
+			if !ok {
+				continue
+			}
+			switch key {
+			case "Package":
+				e.Name = value
+			case "Version":
+				e.Version = value
+			case "Filename":
+				e.File = value
+			case "SHA256sum":
+				e.Hashes = value
+			case "Size":
+				fmt.Sscanf(value, "%d", &e.FileSize)
+			}
+		}
+		if e.Name != "" {
+			out = append(out, e)
+		}
+	}
+	return out, nil
 }
 
 func get(ctx context.Context, hc *http.Client, url string) ([]byte, int, error) {

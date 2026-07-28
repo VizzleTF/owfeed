@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 
+	"github.com/VizzleTF/owfeed/internal/config"
 	"github.com/VizzleTF/owfeed/internal/smoke"
 )
 
@@ -37,7 +38,24 @@ func (a *app) smoke(ctx context.Context, args []string) error {
 		line = c.DefaultRelease().Line
 	}
 
+	format := c.DefaultRelease().Format
+	opts := smoke.Options{Format: format}
+	if format == config.FormatIPK {
+		key, err := a.usignKey(c)
+		if err != nil {
+			return err
+		}
+		opts.UsignKeyID = key.ID.String()
+		// The 24.10 images are the ones that carry opkg; the apk default would be a
+		// router that cannot read this feed at all.
+		if *image == "" {
+			opts.Image = ""
+		}
+	}
+
 	res, err := smoke.Run(ctx, smoke.Options{
+		Format:       opts.Format,
+		UsignKeyID:   opts.UsignKeyID,
 		Dir:          out,
 		FeedName:     c.Feed.Name,
 		Release:      line,
@@ -54,9 +72,15 @@ func (a *app) smoke(ctx context.Context, args []string) error {
 	for _, p := range res.Installed {
 		a.logf("  %s", p)
 	}
-	if res.LocalInstall {
+	switch {
+	case format == config.FormatIPK:
+		// opkg has no per-package signature, so there is nothing here to claim. Its
+		// trust rests entirely on the signed index, which is why check_signature
+		// being on is asserted inside the container rather than assumed.
+		a.logf("opkg verified the index signature before reading it; individual packages carry none, by design")
+	case res.LocalInstall:
 		a.logf("`apk add ./file.apk` works without --allow-untrusted, so LuCI's Upload Package flow can install these")
-	} else {
+	default:
 		a.logf("note: `apk add ./file.apk` needed a flag, so LuCI's Upload Package flow cannot install these")
 	}
 	if res.WorldPin != "" {

@@ -21,11 +21,14 @@ import (
 
 	"github.com/VizzleTF/owfeed/internal/apk"
 	"github.com/VizzleTF/owfeed/internal/config"
+	"github.com/VizzleTF/owfeed/internal/feedindex"
 	"github.com/VizzleTF/owfeed/internal/index"
+	"github.com/VizzleTF/owfeed/internal/ipkindex"
 	"github.com/VizzleTF/owfeed/internal/keys"
 	"github.com/VizzleTF/owfeed/internal/lock"
 	"github.com/VizzleTF/owfeed/internal/meta"
 	"github.com/VizzleTF/owfeed/internal/snippet"
+	"github.com/VizzleTF/owfeed/internal/usign"
 )
 
 // Severity orders findings.
@@ -119,6 +122,10 @@ type Input struct {
 	Identity keys.Identity
 	// PubKeyName is the file the public key is published as.
 	PubKeyName string
+	// UsignKey is the public half of the key an opkg index is signed with. opkg
+	// verifies usign where apk verifies EC, so a feed serving 24.10 is checked
+	// against a different key than the one that signs its apk side.
+	UsignKey *usign.PublicKey
 	// RequireOrigin makes a package that does not say where it came from an error.
 	// A feed carrying only its author's own work does not need this; one carrying
 	// other people's does, because the URL in the installed package is the only
@@ -341,7 +348,7 @@ func checkTree(ctx context.Context, r *Report, in Input) error {
 		return err
 	}
 	if len(dirs) == 0 {
-		return fmt.Errorf("%s holds no %s; run `owfeed index` first", in.OutDir, index.IndexFile)
+		return fmt.Errorf("%s holds no index; run `owfeed index` first", in.OutDir)
 	}
 
 	arches := map[string]bool{}
@@ -362,123 +369,143 @@ func checkTree(ctx context.Context, r *Report, in Input) error {
 func checkIndexDir(ctx context.Context, r *Report, in Input, dir string, arches map[string]bool) error {
 	where := relTo(in.OutDir, dir)
 
-	// 401: compression. OpenWrt builds apk with -Dzstd=disabled, so a zstd index
-	// parses on the build host and dies on every router.
-	r.Checked++
-	adb, err := os.ReadFile(filepath.Join(dir, index.IndexFile))
+	idx, err := feedindex.ReadDir(dir)
 	if err != nil {
-		return err
-	}
-	if magic := string(adb[:min(4, len(adb))]); magic != "ADBd" {
 		r.add(Finding{
 			ID: "OWF401", Severity: Error, Where: where,
-			What: fmt.Sprintf("index magic is %q, not ADBd", magic),
-			Why:  "OpenWrt builds apk with zstd disabled, so anything but deflate fails on the device with \"ADB compression not supported\"",
-			Fix:  "rebuild the index without -C; the default compression is the correct one",
-		})
-	}
-
-	// 405: index size. The wget backend ignores If-Modified-Since, so every
-	// subscriber downloads the whole index on every `apk update`, forever.
-	r.Checked++
-	switch size := int64(len(adb)); {
-	case size > 8<<20:
-		r.add(Finding{
-			ID: "OWF405", Severity: Error, Where: where,
-			What: fmt.Sprintf("index is %.1f MB", float64(size)/(1<<20)),
-			Why:  "apk's wget backend ignores If-Modified-Since, so this is downloaded in full by every subscriber on every `apk update`",
-			Fix:  "split the feed, or drop versions you no longer support",
-		})
-	case size > 1<<20:
-		r.add(Finding{
-			ID: "OWF405", Severity: Warn, Where: where,
-			What: fmt.Sprintf("index is %.1f MB", float64(size)/(1<<20)),
-			Why:  "every subscriber downloads it in full on every `apk update`, because apk's wget backend ignores If-Modified-Since",
-			Fix:  "consider splitting the feed before it grows further",
-		})
-	}
-
-	// 403: the index must be signed, by the key the feed publishes.
-	r.Checked++
-	signers, err := index.Signatures(ctx, in.Tool, dir, index.IndexFile)
-	if err != nil {
-		// An index apk cannot read at all is a finding about the index, not a
-		// failure of the run: reporting it alongside everything else is more use
-		// than stopping here.
-		r.add(Finding{
-			ID: "OWF403", Severity: Error, Where: where,
-			What: "apk cannot read this index: " + err.Error(),
-			Why:  "subscribers run the same code on it during `apk update`",
+			What: "no index owfeed can read: " + err.Error(),
 			Fix:  "rebuild it with `owfeed index`",
 		})
 		return nil
 	}
-	if !containsID(signers, in.Identity) {
+
+	// 401: the index has to be one the device's package manager can read. For apk
+	// that means deflate — OpenWrt builds it with zstd disabled, so anything else
+	// parses on the build host and dies on every router. For opkg it means the
+	// compressed copy subscribers download matches the one the signature covers.
+	r.Checked++
+	switch idx.Format {
+	case feedindex.APK:
+		if magic := string(idx.Raw[:min(4, len(idx.Raw))]); magic != "ADBd" {
+			r.add(Finding{
+				ID: "OWF401", Severity: Error, Where: where,
+				What: fmt.Sprintf("index magic is %q, not ADBd", magic),
+				Why:  "OpenWrt builds apk with zstd disabled, so anything but deflate fails on the device with \"ADB compression not supported\"",
+				Fix:  "rebuild the index without -C; the default compression is the correct one",
+			})
+		}
+	case feedindex.IPK:
+		if err := feedindex.CheckCompressed(dir, idx); err != nil {
+			r.add(Finding{
+				ID: "OWF401", Severity: Error, Where: where,
+				What: err.Error(),
+				Why:  "opkg downloads Packages.gz and verifies the signature over Packages, so a stale compressed copy is a feed whose signature is valid and whose contents are not",
+				Fix:  "rebuild the index; both files are written together",
+			})
+		}
+	}
+
+	// 405: index size. Neither manager revalidates cheaply — apk's wget backend
+	// ignores If-Modified-Since — so this is downloaded in full by every subscriber
+	// on every update, forever.
+	r.Checked++
+	switch {
+	case idx.Size > 8<<20:
 		r.add(Finding{
-			ID: "OWF403", Severity: Error, Where: where,
-			What: fmt.Sprintf("index is not signed by %s (signatures: %s)", in.Identity, join(signers)),
-			Why:  "subscribers install the published public key; an index signed by anything else fails their `apk update`",
-			Fix:  "re-run `owfeed index` with the feed's key",
+			ID: "OWF405", Severity: Error, Where: where,
+			What: fmt.Sprintf("index is %.1f MB", float64(idx.Size)/(1<<20)),
+			Why:  "every subscriber downloads it in full on every update",
+			Fix:  "split the feed, or drop versions you no longer support",
+		})
+	case idx.Size > 1<<20:
+		r.add(Finding{
+			ID: "OWF405", Severity: Warn, Where: where,
+			What: fmt.Sprintf("index is %.1f MB", float64(idx.Size)/(1<<20)),
+			Why:  "every subscriber downloads it in full on every update",
+			Fix:  "consider splitting the feed before it grows further",
 		})
 	}
 
-	entries, err := readIndexJSON(dir)
-	if err != nil {
+	// 403: the index must be signed, by the key subscribers install.
+	r.Checked++
+	if err := checkIndexSignature(ctx, in, dir, idx, where, r); err != nil {
 		return err
 	}
 
-	for _, e := range entries {
-		// 202: a version apk cannot parse has no place in the ordering, so the
-		// package can never be compared or upgraded.
+	for _, e := range idx.Entries {
+		// 202: a version the package manager cannot parse has no place in the
+		// ordering, so the package can never be compared or upgraded.
 		r.Checked++
-		if err := meta.ValidateVersion(e.Version); err != nil {
-			r.add(Finding{
-				ID: "OWF202", Severity: Error, Where: where + "/" + e.Name,
-				What: err.Error(),
-				Fix:  "rebuild the package with a version apk accepts",
-			})
+		if idx.Format == feedindex.APK {
+			if err := meta.ValidateVersion(e.Version); err != nil {
+				r.add(Finding{
+					ID: "OWF202", Severity: Error, Where: where + "/" + e.Name,
+					What: err.Error(),
+					Fix:  "rebuild the package with a version apk accepts",
+				})
+			}
 		}
 
-		// 201: "all" is what OpenWrt Makefiles say and apk rejects it.
+		// 201: an architecture the release does not publish is invisible to every
+		// device on it. opkg spells the architecture-independent one "all" and apk
+		// spells it "noarch"; each is correct for its own format.
 		r.Checked++
-		if e.Arch != "noarch" && !arches[e.Arch] {
+		if !isAnyArch(idx.Format, e.Arch) && !arches[e.Arch] {
 			r.add(Finding{
 				ID: "OWF201", Severity: Error, Where: where + "/" + e.Name,
 				What: fmt.Sprintf("arch is %q, which this release does not publish", e.Arch),
-				Why:  "a package whose arch is not in the release's set is invisible to every device on it",
-				Fix:  "use \"noarch\", or an architecture from owfeed.lock",
+				Fix:  "use the architecture-independent name for this format, or one from owfeed.lock",
 			})
 		}
 
-		// 404 and 402 together: the index carries no filenames, so apk derives the
-		// download name from the package name and version. The file therefore has to
-		// be a flat neighbour of the index under exactly that name, and it has to be
-		// the file the index describes.
+		// 402 and 404: the file the index names has to be beside it, and be the file
+		// the index describes.
 		r.Checked++
-		file := e.Name + "-" + e.Version + ".apk"
-		st, err := os.Stat(filepath.Join(dir, file))
+		path := filepath.Join(dir, e.File)
+		st, statErr := os.Stat(path)
 		switch {
-		case err != nil:
+		case statErr != nil:
 			r.add(Finding{
 				ID: "OWF402", Severity: Error, Where: where,
-				What: fmt.Sprintf("the index lists %s %s but there is no %s beside it", e.Name, e.Version, file),
-				Why:  "apk builds the download URL from the package name and version relative to the index, so this entry cannot be fetched",
+				What: fmt.Sprintf("the index lists %s %s but there is no %s beside it", e.Name, e.Version, e.File),
+				Why:  "the download URL is built relative to the index, so this entry cannot be fetched",
 				Fix:  "run `owfeed index` from the directory that holds the packages",
 			})
-		case st.Size() != e.FileSize:
+			continue
+		case st.Size() != e.Size:
 			r.add(Finding{
-				ID: "OWF404", Severity: Error, Where: where + "/" + file,
-				What: fmt.Sprintf("the index says %d bytes, the file is %d", e.FileSize, st.Size()),
-				Why: "the package was modified after it was indexed — signing appends bytes, so this is what indexing before signing looks like; " +
-					"subscribers get an integrity failure",
-				Fix: "sign the packages first, then index them",
+				ID: "OWF404", Severity: Error, Where: where + "/" + e.File,
+				What: fmt.Sprintf("the index says %d bytes, the file is %d", e.Size, st.Size()),
+				Why:  "the package was modified after it was indexed; subscribers get an integrity failure",
+				Fix:  "sign the packages first, then index them",
 			})
+			continue
+		}
+
+		// opkg records the file's own hash, which is a stronger claim than apk's
+		// file size and worth checking where it exists.
+		if e.SHA256 != "" {
+			r.Checked++
+			sum, err := feedindex.SHA256(path)
+			if err != nil {
+				return err
+			}
+			if sum != e.SHA256 {
+				r.add(Finding{
+					ID: "OWF404", Severity: Error, Where: where + "/" + e.File,
+					What: "the file does not hash to what the index records",
+					Why:  "opkg checks this before installing, so the package is unusable",
+					Fix:  "rebuild the index over the packages as they are now",
+				})
+			}
 		}
 	}
 
-	// 303: each package signed by the feed's key, which is what makes
-	// `apk add ./file.apk` work without --allow-untrusted and therefore makes LuCI's
-	// Upload Package flow usable.
+	// 303: each package signed by the feed's key. apk only — opkg has no
+	// per-package signature at all, and its trust rests on the index alone.
+	if idx.Format != feedindex.APK {
+		return nil
+	}
 	pkgs, err := index.Packages(dir)
 	if err != nil {
 		return err
@@ -503,6 +530,60 @@ func checkIndexDir(ctx context.Context, r *Report, in Input, dir string, arches 
 	return nil
 }
 
+// checkIndexSignature verifies the index against whichever key its format uses.
+func checkIndexSignature(ctx context.Context, in Input, dir string, idx *feedindex.Index, where string, r *Report) error {
+	if idx.Format == feedindex.IPK {
+		if in.UsignKey == nil {
+			r.add(Finding{
+				ID: "OWF403", Severity: Error, Where: where,
+				What: "no usign key to check this index against",
+				Why:  "opkg has check_signature on by default, so an index nobody can verify is a feed nobody can use",
+				Fix:  "set signing.usign-key in owfeed.yml",
+			})
+			return nil
+		}
+		if err := feedindex.VerifyUsign(dir, idx, in.UsignKey); err != nil {
+			r.add(Finding{
+				ID: "OWF403", Severity: Error, Where: where,
+				What: "the index signature does not verify: " + err.Error(),
+				Why:  "opkg checks this before reading the index, so subscribers see the feed as broken",
+				Fix:  "rebuild the index with `owfeed index --format ipk`",
+			})
+		}
+		return nil
+	}
+
+	signers, err := index.Signatures(ctx, in.Tool, dir, index.IndexFile)
+	if err != nil {
+		r.add(Finding{
+			ID: "OWF403", Severity: Error, Where: where,
+			What: "apk cannot read this index: " + err.Error(),
+			Why:  "subscribers run the same code on it during `apk update`",
+			Fix:  "rebuild it with `owfeed index`",
+		})
+		return nil
+	}
+	if !containsID(signers, in.Identity) {
+		r.add(Finding{
+			ID: "OWF403", Severity: Error, Where: where,
+			What: fmt.Sprintf("index is not signed by %s (signatures: %s)", in.Identity, join(signers)),
+			Why:  "subscribers install the published public key; an index signed by anything else fails their update",
+			Fix:  "re-run `owfeed index` with the feed's key",
+		})
+	}
+	return nil
+}
+
+// isAnyArch reports whether a name means "installs anywhere" in this format. The
+// two managers disagree on the word: apk rejects "all" as uninstallable and opkg
+// has never heard of "noarch".
+func isAnyArch(format, arch string) bool {
+	if format == feedindex.IPK {
+		return arch == "all"
+	}
+	return arch == config.Noarch
+}
+
 // indexDirs finds every directory in the tree holding an index.
 func indexDirs(out string) ([]string, error) {
 	var dirs []string
@@ -513,8 +594,11 @@ func indexDirs(out string) ([]string, error) {
 		if !d.IsDir() {
 			return nil
 		}
-		if _, statErr := os.Stat(filepath.Join(path, index.IndexFile)); statErr == nil {
-			dirs = append(dirs, path)
+		for _, name := range []string{index.IndexFile, ipkindex.IndexFile} {
+			if _, statErr := os.Stat(filepath.Join(path, name)); statErr == nil {
+				dirs = append(dirs, path)
+				break
+			}
 		}
 		return nil
 	})

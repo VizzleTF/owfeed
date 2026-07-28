@@ -5,6 +5,10 @@ import (
 	"flag"
 	"fmt"
 
+	"github.com/VizzleTF/owfeed/internal/apk"
+	"github.com/VizzleTF/owfeed/internal/config"
+	"github.com/VizzleTF/owfeed/internal/usign"
+
 	"github.com/VizzleTF/owfeed/internal/doctor"
 	"github.com/VizzleTF/owfeed/internal/keys"
 )
@@ -41,9 +45,24 @@ func (a *app) doctor(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	tool, err := a.tool(ctx, l)
-	if err != nil {
-		return err
+	// The apk toolchain is only needed to read an apk index. A feed that publishes
+	// only for 24.10 should not have to download an SDK to be checked.
+	var tool *apk.Tool
+	if usesFormat(c, config.FormatAPK) {
+		if tool, err = a.tool(ctx, l); err != nil {
+			return err
+		}
+	}
+
+	var usignPub *usign.PublicKey
+	if c.Signing.UsignKey != "" {
+		k, err := a.usignKey(c)
+		if err != nil {
+			return err
+		}
+		if usignPub, err = usign.ParsePublicKey(k.MarshalPublic("")); err != nil {
+			return wrap(exitKey, err)
+		}
 	}
 
 	key, err := a.signingKey(c)
@@ -63,6 +82,7 @@ func (a *app) doctor(ctx context.Context, args []string) error {
 		OutDir:        out,
 		Identity:      id,
 		PubKeyName:    c.Feed.Name + ".pem",
+		UsignKey:      usignPub,
 		RequireOrigin: *requireOrigin,
 	})
 	if err != nil {
@@ -83,4 +103,14 @@ func (a *app) doctor(ctx context.Context, args []string) error {
 		return nil
 	}
 	return fail(exitCheck, "%d finding(s) at or above %s, out of %d checks", len(report.Findings), *failOn, report.Checked)
+}
+
+// usesFormat reports whether any release line uses a package format.
+func usesFormat(c *config.Config, format string) bool {
+	for _, r := range c.Releases {
+		if r.Format == format {
+			return true
+		}
+	}
+	return false
 }

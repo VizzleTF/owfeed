@@ -17,13 +17,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/VizzleTF/owfeed/internal/feedindex"
 )
 
 // DefaultArch is the architecture smoked. It is x86_64 because that is the one
@@ -49,6 +50,12 @@ type Options struct {
 	PointRelease string
 	// Packages are the names to install; empty means everything in the index.
 	Packages []string
+	// Format is "apk" or "ipk". The two managers are pointed at a feed in
+	// incompatible ways, so the script differs entirely.
+	Format string
+	// UsignKeyID is the opkg key's id, which is also the filename opkg looks it up
+	// under.
+	UsignKeyID string
 }
 
 // Result describes what happened.
@@ -83,9 +90,12 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 	repoDir := filepath.Join(opts.Dir, expandLayout(opts.LayoutPath, opts.Release, arch))
 	pkgs := opts.Packages
 	if len(pkgs) == 0 {
-		var err error
-		if pkgs, err = indexPackages(repoDir); err != nil {
+		idx, err := feedindex.ReadDir(repoDir)
+		if err != nil {
 			return nil, err
+		}
+		for _, e := range idx.Entries {
+			pkgs = append(pkgs, e.Name)
 		}
 	}
 	if len(pkgs) == 0 {
@@ -97,10 +107,14 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 		return nil, err
 	}
 
+	body := script(opts.FeedName, opts.Release, opts.LayoutPath, arch, pkgs)
+	if opts.Format == "ipk" {
+		body = scriptOpkg(opts.FeedName, opts.Release, opts.LayoutPath, arch, opts.UsignKeyID, pkgs)
+	}
 	cmd := exec.CommandContext(ctx, "docker", "run", "--rm",
 		"--platform", "linux/amd64",
 		"-v", abs+":/feed:ro",
-		image, "sh", "-c", script(opts.FeedName, opts.Release, opts.LayoutPath, arch, pkgs))
+		image, "sh", "-c", body)
 
 	out, runErr := cmd.CombinedOutput()
 	res := &Result{Image: image, Arch: arch, Installed: pkgs, Log: string(out)}
@@ -250,32 +264,36 @@ echo "` + markerDone + `"
 `
 }
 
+// scriptOpkg is the 24.10 sequence. Nothing carries over from the apk one: opkg is
+// pointed at a directory rather than at the index file, and looks its key up by an
+// id that is also the filename.
+func scriptOpkg(feed, release, layout, arch, keyID string, pkgs []string) string {
+	repo := "file:///feed/" + expandLayout(layout, release, arch)
+
+	return `set -e
+# The stock image ships no /var/lock, and opkg refuses to start without it.
+mkdir -p /var/lock /etc/opkg/keys
+cp /feed/` + keyID + ` /etc/opkg/keys/` + keyID + `
+
+# Signature checking must be on, or this proves nothing about the signature.
+grep -q '^option check_signature' /etc/opkg.conf
+
+echo "src/gz ` + feed + ` ` + repo + `" > /etc/opkg/customfeeds.conf
+opkg update
+opkg install ` + strings.Join(pkgs, " ") + `
+
+for p in ` + strings.Join(pkgs, " ") + `; do
+	opkg files "$p" >/dev/null || { echo "no file list for $p" >&2; exit 1; }
+done
+
+echo "` + markerDone + `"
+`
+}
+
 func expandLayout(path, release, arch string) string {
 	if path == "" {
 		path = "releases/{release}/{arch}"
 	}
 	path = strings.ReplaceAll(path, "{release}", release)
 	return strings.ReplaceAll(path, "{arch}", arch)
-}
-
-// indexPackages reads the names the index advertises, so the check installs what
-// the feed actually offers rather than what someone remembered to list.
-func indexPackages(dir string) ([]string, error) {
-	b, err := os.ReadFile(filepath.Join(dir, "index.json"))
-	if err != nil {
-		return nil, err
-	}
-	var doc struct {
-		Packages []struct {
-			Name string `json:"name"`
-		} `json:"packages"`
-	}
-	if err := json.Unmarshal(b, &doc); err != nil {
-		return nil, err
-	}
-	var out []string
-	for _, p := range doc.Packages {
-		out = append(out, p.Name)
-	}
-	return out, nil
 }

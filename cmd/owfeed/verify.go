@@ -49,6 +49,7 @@ func (a *app) verify(ctx context.Context, args []string) error {
 		Release:    line,
 		LayoutPath: c.Layout.Path,
 		Arch:       *arch,
+		Format:     c.DefaultRelease().Format,
 		LocalDir:   local,
 	})
 	if err != nil {
