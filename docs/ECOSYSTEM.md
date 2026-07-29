@@ -368,6 +368,27 @@ owlab's CI does not use owfeed. Where owlab needs to confirm its `dist/<arch>/` 
 matches the contract, it checks against the specification. The specification is a shared
 artifact; a binary is not.
 
+## Licences
+
+They differ, and the difference is a decision rather than drift.
+
+| | Licence | Why this one |
+|---|---|---|
+| **owlab** | GPL-2.0-only | Copyleft, deliberately. owlab ships an overlay -- `rc.local`, `uci-defaults`, the fixture scripts -- inside every image it builds, so what it distributes is more than the binary somebody ran |
+| **owfeed** | Apache-2.0 | The explicit patent grant is the reason. This is a signing and packaging tool; a permissive licence that says nothing about patents is a worse answer for code people are asked to run against their keys |
+| **owfeed-packages** | MIT | The repository's own content is glue: workflows, three shell scripts and a directory of pinned versions. The packages it publishes are other people's, under their own terms -- see its LEGAL.md |
+| **luci-theme-footstrap** | Apache-2.0 | Matches LuCI upstream, which is what a theme is built against and read alongside |
+
+Two things follow that are easy to get wrong:
+
+* **A licence difference is not a coupling problem.** Nothing here links against anything else here
+  -- the tools meet at file formats and CLI surfaces, which is the whole point of the boundary
+  above. GPL in owlab imposes nothing on a repository that merely *calls* `owlab test` in CI, and
+  nothing on owfeed, which does not call it at all.
+* **Unifying them would cost something and buy nothing.** Moving owlab off copyleft is a one-way
+  door: every version already distributed stays under the old terms, and the decision cannot be
+  taken back for anyone who already has a copy. Tidiness is not a reason.
+
 ## Action pinning
 
 Internal `VizzleTF/*` references are pinned to an exact tag, bumped as part of the release
