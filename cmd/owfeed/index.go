@@ -451,17 +451,24 @@ func (a *app) buildKeyring(ctx context.Context, c *config.Config, l *lock.Lock, 
 	if err != nil {
 		return noop, err
 	}
-	// The version comes from the lockfile, which is where a rotation is recorded and
-	// reviewed. Inventing one per run gives a number that either never moves or moves
-	// for no reason.
-	if l.Keyring == nil {
-		return noop, fail(exitConflict,
-			"signing.keyring-package is on but %s records no keyring version; run `owfeed lock --update`",
-			a.lockPath())
-	}
 	id, err := keys.IdentityOf(&key.PublicKey)
 	if err != nil {
 		return noop, wrap(exitKey, err)
+	}
+	// The version comes from the lockfile, which is where a rotation is recorded and
+	// reviewed — a number invented per run either never moves or moves for no reason.
+	//
+	// Except for the first one. Demanding `owfeed lock --update` here made the feature
+	// unreachable for the feeds it is for: deriving the entry needs the private key, and
+	// a feed keeps its key in CI secrets, not on the maintainer's laptop. So the first
+	// publication counts as 1 and says so. A LATER key that disagrees with the record is
+	// still refused below, because counting a rotation needs the state the lockfile
+	// holds, and by then whoever rotated has the new key in hand anyway.
+	if l.Keyring == nil {
+		l.Keyring = &lock.Keyring{Identity: id.String(), Version: keyring.VersionFor(1)}
+		a.logf("no keyring version in %s: publishing %s for key %s",
+			a.lockPath(), l.Keyring.Version, id)
+		a.logf("record it with `owfeed lock --update` when you next have the signing key")
 	}
 	// A key that disagrees with the record is a rotation nobody wrote down. Building
 	// anyway would publish the new key under the old version, which every router

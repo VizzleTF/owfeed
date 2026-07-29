@@ -2,6 +2,18 @@
 
 Dates are when the tag was cut. Anything not listed is documentation or tests.
 
+## v0.4.3 — 2026-07-29
+
+- **Fixed:** `signing.keyring-package` was unreachable for the feeds it exists for.
+  `index` refused to build the package unless `owfeed.lock` already recorded a keyring
+  version, and deriving that entry needs the feed's private signing key — which a feed
+  keeps in CI secrets, not on the maintainer's laptop. Every publish failed with an
+  instruction the maintainer could not carry out.
+
+  The first publication now counts as `1.0` and logs that it did. A later key that
+  disagrees with the lockfile is still refused, because counting a rotation needs the
+  state the lockfile holds — and whoever rotated has the new key in hand by then.
+
 ## v0.4.2 — 2026-07-29
 
 - **Added:** `owfeed index` writes `subscribe.sh` at the feed root — one script that
