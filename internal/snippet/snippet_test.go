@@ -28,9 +28,11 @@ func TestShell(t *testing.T) {
 		"https://feed.example.org/releases/25.12/$(cat /etc/apk/arch)/packages.adb",
 		"/etc/apk/repositories.d/demofeed.list",
 		"/etc/apk/keys/demofeed.pem",
-		// The line nobody else emits, and the top cause of "UNTRUSTED signature"
-		// reports after an upgrade.
-		"/etc/sysupgrade.conf",
+		// The step nobody else emits, and the top cause of "UNTRUSTED signature"
+		// reports after an upgrade. keep.d rather than /etc/sysupgrade.conf: it is a
+		// file of this feed's own, so re-running the install rewrites it instead of
+		// appending a second copy to somebody else's config.
+		"/lib/upgrade/keep.d/demofeed",
 		"apk update && apk add luci-app-demo",
 	}
 	for _, w := range want {
@@ -48,8 +50,8 @@ func TestShell(t *testing.T) {
 	if strings.Contains(got, "--allow-untrusted") {
 		t.Errorf("snippet tells the user to bypass verification:\n%s", got)
 	}
-	// Listing the whole key directory in sysupgrade.conf preserves the *old* image's
-	// openwrt-*.pem, which then shadows the new one.
+	// Listing the whole key directory preserves the *old* image's openwrt-*.pem,
+	// which then shadows the new one.
 	if strings.Contains(got, "/etc/apk/keys\n") || strings.Contains(got, "/etc/apk/keys ") {
 		t.Errorf("snippet preserves the whole key directory rather than the feed's own key:\n%s", got)
 	}

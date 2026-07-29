@@ -68,8 +68,9 @@ echo "https://repo.owfeed.org/releases/25.12/$(cat /etc/apk/arch)/packages.adb" 
   > /etc/apk/repositories.d/owfeed-packages.list
 
 # 3. Сохранить оба файла при обновлении прошивки
+mkdir -p /lib/upgrade/keep.d
 printf '%s\n' /etc/apk/keys/owfeed-packages.pem \
-  /etc/apk/repositories.d/owfeed-packages.list >> /etc/sysupgrade.conf
+  /etc/apk/repositories.d/owfeed-packages.list > /lib/upgrade/keep.d/owfeed-packages
 
 apk update &amp;&amp; apk add luci-theme-footstrap</pre>
 
@@ -124,6 +125,7 @@ opkg update &amp;&amp; opkg install luci-theme-footstrap</pre>
 <pre># apk
 rm /etc/apk/repositories.d/owfeed-packages.list
 rm /etc/apk/keys/owfeed-packages.pem
+rm -f /lib/upgrade/keep.d/owfeed-packages
 apk update
 
 # opkg — уберите строку src/gz, затем

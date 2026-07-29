@@ -67,8 +67,9 @@ echo "https://repo.owfeed.org/releases/25.12/$(cat /etc/apk/arch)/packages.adb" 
   > /etc/apk/repositories.d/owfeed-packages.list
 
 # 3. Keep both across a firmware upgrade
+mkdir -p /lib/upgrade/keep.d
 printf '%s\n' /etc/apk/keys/owfeed-packages.pem \
-  /etc/apk/repositories.d/owfeed-packages.list >> /etc/sysupgrade.conf
+  /etc/apk/repositories.d/owfeed-packages.list > /lib/upgrade/keep.d/owfeed-packages
 
 apk update &amp;&amp; apk add luci-theme-footstrap</pre>
 
@@ -123,6 +124,7 @@ nothing else, so what you install is the author's own file.</p>
 <pre># apk
 rm /etc/apk/repositories.d/owfeed-packages.list
 rm /etc/apk/keys/owfeed-packages.pem
+rm -f /lib/upgrade/keep.d/owfeed-packages
 apk update
 
 # opkg — remove the src/gz line, then

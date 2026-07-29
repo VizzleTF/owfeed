@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 
+	"owfeed.org/owfeed/internal/badge"
 	"owfeed.org/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/feedindex"
 	"owfeed.org/owfeed/internal/index"
 	"owfeed.org/owfeed/internal/keys"
 )
@@ -102,6 +104,9 @@ func (a *app) index(ctx context.Context, args []string) error {
 		return wrap(exitKey, err)
 	}
 
+	badges := map[string]badge.Package{}
+	seenLine := map[string]bool{}
+
 	for _, r := range apkLines {
 		lr, ok := l.Release(r.Line)
 		if !ok {
@@ -145,6 +150,26 @@ func (a *app) index(ctx context.Context, args []string) error {
 			}
 			total += len(placed)
 			a.debugf("%s: %d packages, index %d bytes", dir, len(res.Packages), res.Size)
+
+			// Badge data, read back from the index that was just written rather than
+			// from the config: a badge that claims a version the feed does not serve
+			// is worse than no badge, and this is the only place both are known to
+			// agree. One architecture per line is enough — a package present on a
+			// line appears in every architecture directory it belongs to, at the
+			// same version.
+			if !seenLine[r.Line] {
+				idx, err := feedindex.ReadDir(dir)
+				if err != nil {
+					return wrap(exitIndex, err)
+				}
+				for _, e := range idx.Entries {
+					b := badges[e.Name]
+					b.Name, b.Version = e.Name, e.Version
+					b.Releases = append(b.Releases, r.Line)
+					badges[e.Name] = b
+				}
+				seenLine[r.Line] = true
+			}
 		}
 		a.logf("%s: %d package placement(s) across %d architecture(s)", r.Line, total, len(lr.Arches))
 	}
@@ -157,6 +182,20 @@ func (a *app) index(ctx context.Context, args []string) error {
 	}
 	if err := os.WriteFile(filepath.Join(*out, c.Feed.Name+".pem"), pub, 0o644); err != nil {
 		return wrap(exitIndex, err)
+	}
+
+	// One badge file per package, so a maintainer whose work this feed carries can
+	// show it in their README without the feed having to know they did.
+	list := make([]badge.Package, 0, len(badges))
+	for _, b := range badges {
+		list = append(list, b)
+	}
+	badge.Sort(list)
+	if err := badge.Write(*out, list); err != nil {
+		return wrap(exitIndex, err)
+	}
+	if len(list) > 0 {
+		a.debugf("wrote %d badge file(s) under %s/", len(list)*2, badge.Dir)
 	}
 	// GitHub Pages runs Jekyll unless told not to, and Jekyll drops paths beginning
 	// with an underscore or a dot. On a tree of binaries that silently removes files.

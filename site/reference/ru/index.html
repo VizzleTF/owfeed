@@ -44,7 +44,7 @@
 
 <p class="kicker">Справочник</p>
 <h1>Команды и конфиг</h1>
-<p class="lead">Страница для поиска. Актуально для owlab v0.5.1 и owfeed v0.3.0. Полное описание
+<p class="lead">Страница для поиска. Актуально для owlab v0.5.1 и owfeed v0.3.1. Полное описание
 конфига — <a href="/schema/v1.json">schema/v1.json</a>: он генерируется из кода, и его же читает
 ваш редактор.</p>
 
@@ -267,7 +267,8 @@ id, поэтому для opkg важно <em>имя</em> файла ключа.
 <dt>sysupgrade</dt>
 <dd>Обновление прошивки с сохранением заранее перечисленных файлов.
 <code>/etc/apk/keys/*.pem</code> и список репозиториев в этот перечень по умолчанию не входят —
-добавьте их в <code>/etc/sysupgrade.conf</code>.</dd>
+перечислите их в <code>/lib/upgrade/keep.d/&lt;feed&gt;</code>, который sysupgrade читает наравне с
+<code>/etc/sysupgrade.conf</code>.</dd>
 
 <dt>dist/&lt;arch&gt;/</dt>
 <dd><a href="https://github.com/owfeed/owfeed/blob/main/docs/artifact-contract.md">Контракт

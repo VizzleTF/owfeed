@@ -52,7 +52,7 @@
 
 <table>
 <tr><th>Что видно</th><th>Причина и что делать</th></tr>
-<tr><td><code>UNTRUSTED signature</code> после обновления прошивки</td><td>Ключа больше нет. Сам по себе <code>/etc/apk/keys/*.pem</code> не переживает sysupgrade. Поставьте ключ заново и впишите его вместе с файлом репозитория в <code>/etc/sysupgrade.conf</code>.</td></tr>
+<tr><td><code>UNTRUSTED signature</code> после обновления прошивки</td><td>Ключа больше нет. Сам по себе <code>/etc/apk/keys/*.pem</code> не переживает sysupgrade. Поставьте ключ заново и перечислите его вместе с файлом репозитория в <code>/lib/upgrade/keep.d/&lt;feed&gt;</code>, который sysupgrade читает наравне с <code>/etc/sysupgrade.conf</code>.</td></tr>
 <tr><td>apk просит <code>--allow-untrusted</code></td><td>Индекс не подписан ни одним ключом, которому роутер доверяет. Проверьте, что файл ключа лежит в <code>/etc/apk/keys/</code> и что вы смотрите на нужный фид. Флаг не передавайте: он отключает ровно ту проверку, ради которой ставился ключ.</td></tr>
 <tr><td>Ничего не качается, HTTPS не работает</td><td>Стоковый образ не умеет ходить по HTTPS. Сначала <code>apk add ca-bundle libustream-mbedtls</code>.</td></tr>
 <tr><td>URL фида отдаёт 404 или пустоту</td><td>apk не ходит по редиректам (<a href="https://github.com/openwrt/openwrt/issues/17180">openwrt#17180</a>). Если фид переехал, впишите конечный URL. Для apk это URL <em>файла</em> индекса, для opkg — <em>каталога</em>.</td></tr>

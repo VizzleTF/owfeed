@@ -90,7 +90,9 @@ http-to-https — and it is why `verify` treats any 30x as a hard failure.
 
 **`/etc/apk/keys/*.pem` do not survive sysupgrade.** This is the single largest cause
 of post-upgrade `UNTRUSTED signature` reports, and no existing feed emits the
-`/etc/sysupgrade.conf` line that prevents it. owfeed's install snippet does.
+line that prevents it. owfeed's install snippet writes one, into
+`/lib/upgrade/keep.d/<feed>` — sysupgrade reads that alongside `/etc/sysupgrade.conf`,
+and a file of the feed's own can be rewritten on reinstall rather than appended to.
 
 **`apk add ./file.apk` writes an identity-hash pin into `/etc/apk/world`**, and the
 package then never updates from the repo again. So local installation never appears

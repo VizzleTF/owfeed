@@ -23,13 +23,13 @@ Or a release binary, checked against the attestation GitHub's own workflow produ
 against a checksum from the same release, which whoever replaced the binary could replace too:
 
 ```sh
-gh release download v0.3.0 -R owfeed/owfeed -p 'owfeed-linux-amd64'
+gh release download v0.3.1 -R owfeed/owfeed -p 'owfeed-linux-amd64'
 gh attestation verify owfeed-linux-amd64 -R owfeed/owfeed \
   --signer-workflow owfeed/owfeed/.github/workflows/release.yml
 chmod +x owfeed-linux-amd64 && sudo mv owfeed-linux-amd64 /usr/local/bin/owfeed
 ```
 
-In GitHub Actions, `owfeed/owfeed/setup@v0.3.0` does that verification for you. Builds exist for
+In GitHub Actions, `owfeed/owfeed/setup@v0.3.1` does that verification for you. Builds exist for
 linux and darwin, amd64 and arm64.
 
 **What it needs.** Nothing for `build`, `sign`, `index` or `publish`: the apk toolchain is fetched
@@ -210,9 +210,9 @@ jobs:
       pages: write
       id-token: write
       actions: read
-    uses: owfeed/owfeed/.github/workflows/feed.yml@v0.3.0
+    uses: owfeed/owfeed/.github/workflows/feed.yml@v0.3.1
     with:
-      owfeed-version: v0.3.0
+      owfeed-version: v0.3.1
       smoke-releases: "25.12 24.10"
     secrets:
       sign-key: ${{ secrets.OWFEED_SIGN_KEY }}
@@ -231,8 +231,8 @@ The `environment:` on the publish job is still what gates the run behind a revie
 If you want the steps yourself, take the tool and leave the shape:
 
 ```yaml
-- uses: owfeed/owfeed/setup@v0.3.0
-  with: { version: v0.3.0 }
+- uses: owfeed/owfeed/setup@v0.3.1
+  with: { version: v0.3.1 }
 - run: owfeed --frozen-lock build && owfeed sign && owfeed index
   env:
     OWFEED_SIGN_KEY: ${{ secrets.OWFEED_SIGN_KEY }}
@@ -307,7 +307,7 @@ owfeed refuses each of these. Every one has burned a real maintainer.
 | PKCS#8 key | `openssl genpkey -algorithm EC` writes the wrong PEM. Only SEC1 works. |
 | `1.0~beta` | after `~` apk reads a commit hash, so only hex. Use `_beta1`. |
 | A feed URL that redirects | apk does not follow 30x ([openwrt#17180](https://github.com/openwrt/openwrt/issues/17180)). |
-| No `sysupgrade.conf` line | `/etc/apk/keys/*.pem` do **not** survive sysupgrade. Top cause of post-upgrade `UNTRUSTED signature`. |
+| No `keep.d` entry | `/etc/apk/keys/*.pem` do **not** survive sysupgrade. Top cause of post-upgrade `UNTRUSTED signature`. |
 | Indexing before signing | signing appends bytes, so the index no longer matches the file. |
 | `/etc/config/foo` not in `conffiles:` | sysupgrade replaces the user's settings with your defaults, silently, every upgrade. |
 | `.po` files in the payload | LuCI reads compiled `.lmo`. Point `i18n.from:` at them and owfeed compiles them. |

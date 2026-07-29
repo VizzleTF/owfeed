@@ -44,7 +44,7 @@
 
 <p class="kicker">Reference</p>
 <h1>Commands and config</h1>
-<p class="lead">Look-up page. Current for owlab v0.5.1 and owfeed v0.3.0. The authoritative
+<p class="lead">Look-up page. Current for owlab v0.5.1 and owfeed v0.3.1. The authoritative
 config reference is <a href="/schema/v1.json">schema/v1.json</a>, which is generated from the
 code and is what your editor reads.</p>
 
@@ -266,7 +266,8 @@ point <code>i18n.from:</code> at them and they are compiled during the build.</d
 
 <dt>sysupgrade</dt>
 <dd>A firmware upgrade that keeps a listed set of files. <code>/etc/apk/keys/*.pem</code> and
-your repository list are not in that set by default — add them to
+your repository list are not in that set by default — list them in
+<code>/lib/upgrade/keep.d/&lt;feed&gt;</code>, which sysupgrade reads alongside
 <code>/etc/sysupgrade.conf</code>.</dd>
 
 <dt>dist/&lt;arch&gt;/</dt>

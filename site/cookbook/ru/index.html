@@ -164,7 +164,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: owfeed/owlab/setup@v0.5.1
-      - uses: owfeed/owfeed/setup@v0.3.0
+      - uses: owfeed/owfeed/setup@v0.3.1
 
       - run: owlab build --release 25.12.5
       - run: owlab build --release 24.10.8
@@ -209,6 +209,18 @@ jobs:
 добавление ключа и есть всё решение о доверии.</li>
 <li><strong>Дальше автоматика.</strong> Каждый новый тег подхватывается в течение часа.</li>
 </ol>
+
+<h3>Показать это в своём README</h3>
+
+<p>Когда фид взял ваш пакет, он публикует для него два бейджа, и они обновляются вместе с фидом.
+Бейджи рисуются по только что собранному индексу, поэтому не могут показать версию, которой фид
+не раздаёт:</p>
+
+<pre>[![owfeed](https://img.shields.io/endpoint?url=https://repo.owfeed.org/badge/my-app.json)](https://owfeed.org/install/ru/)
+[![owfeed](https://img.shields.io/endpoint?url=https://repo.owfeed.org/badge/my-app-releases.json)](https://owfeed.org/install/ru/)</pre>
+
+<p>Первый показывает версию, которую раздаёт фид; второй — линии релизов, на которых он её
+раздаёт.</p>
 
 <div class="note"><strong>Есть манифест — обновления приезжают без человека.</strong> Если вместо
 него просто файлы, каждое обновление ждёт человека: подпись на файлах не говорит, какие файлы

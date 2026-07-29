@@ -8,7 +8,7 @@ Key facts that are easy to get wrong:
 - The architecture is the directory, never the filename.
 - apk has no revocation. A key in `/etc/apk/keys` is a trust anchor for every package name, not just the feed's own.
 - apk does not follow HTTP redirects.
-- `/etc/apk/keys/*.pem` does not survive sysupgrade unless listed in `/etc/sysupgrade.conf`.
+- `/etc/apk/keys/*.pem` does not survive sysupgrade on its own. List it in `/lib/upgrade/keep.d/<feed>` — sysupgrade reads that alongside `/etc/sysupgrade.conf`, and a file of the feed's own is idempotent where appending lines is not.
 - `owfeed` never compiles sources. Compilation belongs to `owlab build` or the OpenWrt SDK.
 - A feed signature states provenance and channel only — that these bytes are what the feed published, from the author whose key is pinned. It is not a statement about a package's contents, safety, quality or legality; responsibility for those rests with the package's author.
 - Sign before indexing: signing appends bytes to a package.

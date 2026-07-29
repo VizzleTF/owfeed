@@ -24,13 +24,13 @@ go install owfeed.org/owfeed/cmd/owfeed@latest
 с контрольной суммой из того же релиза, которую подменивший бинарь подменил бы заодно:
 
 ```sh
-gh release download v0.3.0 -R owfeed/owfeed -p 'owfeed-linux-amd64'
+gh release download v0.3.1 -R owfeed/owfeed -p 'owfeed-linux-amd64'
 gh attestation verify owfeed-linux-amd64 -R owfeed/owfeed \
   --signer-workflow owfeed/owfeed/.github/workflows/release.yml
 chmod +x owfeed-linux-amd64 && sudo mv owfeed-linux-amd64 /usr/local/bin/owfeed
 ```
 
-В GitHub Actions эту проверку делает за вас `owfeed/owfeed/setup@v0.3.0`. Сборки есть под linux и
+В GitHub Actions эту проверку делает за вас `owfeed/owfeed/setup@v0.3.1`. Сборки есть под linux и
 darwin, amd64 и arm64.
 
 **Что нужно рядом.** Для `build`, `sign`, `index` и `publish` — ничего: apk-тулчейн скачивается из
@@ -210,9 +210,9 @@ jobs:
       pages: write
       id-token: write
       actions: read
-    uses: owfeed/owfeed/.github/workflows/feed.yml@v0.3.0
+    uses: owfeed/owfeed/.github/workflows/feed.yml@v0.3.1
     with:
-      owfeed-version: v0.3.0
+      owfeed-version: v0.3.1
       smoke-releases: "25.12 24.10"
     secrets:
       sign-key: ${{ secrets.OWFEED_SIGN_KEY }}
@@ -231,8 +231,8 @@ job нет environment, поэтому прочитать environment-секре
 Если шаги нужны свои — берите инструмент, оставьте форму:
 
 ```yaml
-- uses: owfeed/owfeed/setup@v0.3.0
-  with: { version: v0.3.0 }
+- uses: owfeed/owfeed/setup@v0.3.1
+  with: { version: v0.3.1 }
 - run: owfeed --frozen-lock build && owfeed sign && owfeed index
   env:
     OWFEED_SIGN_KEY: ${{ secrets.OWFEED_SIGN_KEY }}
@@ -305,7 +305,7 @@ owfeed отказывается от каждого из этих пунктов
 | Ключ PKCS#8 | `openssl genpkey -algorithm EC` пишет не тот PEM. Работает только SEC1. |
 | `1.0~beta` | после `~` apk читает commit-хеш, только hex. Пишите `_beta1`. |
 | Фид за редиректом | apk не ходит по 30x ([openwrt#17180](https://github.com/openwrt/openwrt/issues/17180)). |
-| Нет строки в `sysupgrade.conf` | `/etc/apk/keys/*.pem` **не** переживают sysupgrade. Причина №1 сообщений `UNTRUSTED signature` после апгрейда. |
+| Нет записи в `keep.d` | `/etc/apk/keys/*.pem` **не** переживают sysupgrade. Причина №1 сообщений `UNTRUSTED signature` после апгрейда. |
 | Индекс раньше подписи | подпись дописывает байты, и индекс перестаёт совпадать с файлом. |
 | `/etc/config/foo` не в `conffiles:` | sysupgrade молча заменит настройки пользователя вашими дефолтами при каждом апгрейде. |
 | `.po` в payload | LuCI читает скомпилированные `.lmo`. Укажите `i18n.from:`, owfeed их соберёт. |

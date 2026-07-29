@@ -52,7 +52,7 @@ failed, and what to do.</p>
 
 <table>
 <tr><th>What you see</th><th>Cause and fix</th></tr>
-<tr><td><code>UNTRUSTED signature</code> after a firmware upgrade</td><td>The key is gone. <code>/etc/apk/keys/*.pem</code> does not survive sysupgrade on its own. Re-add the key, then list it and your repository file in <code>/etc/sysupgrade.conf</code>.</td></tr>
+<tr><td><code>UNTRUSTED signature</code> after a firmware upgrade</td><td>The key is gone. <code>/etc/apk/keys/*.pem</code> does not survive sysupgrade on its own. Re-add the key, then list it and your repository file in <code>/lib/upgrade/keep.d/&lt;feed&gt;</code>, which sysupgrade reads alongside <code>/etc/sysupgrade.conf</code>.</td></tr>
 <tr><td>apk asks for <code>--allow-untrusted</code></td><td>The index is not signed by any key the router trusts. Check the key file is in <code>/etc/apk/keys/</code> and that you are pointing at the right feed. Do not pass the flag — it disables the check you installed the key for.</td></tr>
 <tr><td>Nothing downloads, HTTPS fails</td><td>A stock image cannot fetch over HTTPS. <code>apk add ca-bundle libustream-mbedtls</code> first.</td></tr>
 <tr><td>The feed URL 404s or returns nothing</td><td>apk does not follow redirects (<a href="https://github.com/openwrt/openwrt/issues/17180">openwrt#17180</a>). If the feed moved, put the final URL in the repository file. For apk the URL is the index <em>file</em>; for opkg it is the <em>directory</em>.</td></tr>

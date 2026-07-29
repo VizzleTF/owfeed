@@ -163,7 +163,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: owfeed/owlab/setup@v0.5.1
-      - uses: owfeed/owfeed/setup@v0.3.0
+      - uses: owfeed/owfeed/setup@v0.3.1
 
       - run: owlab build --release 25.12.5
       - run: owlab build --release 24.10.8
@@ -208,6 +208,17 @@ anything.</li>
 key is the whole trust decision.</li>
 <li><strong>After that it is automatic.</strong> Every tag you push is picked up within the hour.</li>
 </ol>
+
+<h3>Show it in your README</h3>
+
+<p>Once a feed carries your package it publishes two badges for it, and they update whenever the
+feed does. They are rendered from the index the feed just built, so they cannot claim a version it
+is not serving:</p>
+
+<pre>[![owfeed](https://img.shields.io/endpoint?url=https://repo.owfeed.org/badge/my-app.json)](https://owfeed.org/install/)
+[![owfeed](https://img.shields.io/endpoint?url=https://repo.owfeed.org/badge/my-app-releases.json)](https://owfeed.org/install/)</pre>
+
+<p>The first shows the version the feed serves; the second, the release lines it serves it on.</p>
 
 <div class="note"><strong>Publish a manifest and updates land unattended.</strong> Publish bare
 files instead and every update waits for a human, because a signature over the files does not say

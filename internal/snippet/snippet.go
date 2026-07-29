@@ -74,8 +74,21 @@ func shellAPK(in Input) string {
 	fmt.Fprintf(&b, "apk add ca-bundle libustream-mbedtls\n\n")
 	fmt.Fprintf(&b, "wget %s/%s.pem -O %s\n", base, f.Name, keyPath)
 	fmt.Fprintf(&b, "echo \"%s\" > %s\n\n", repoLine, listPath)
-	fmt.Fprintf(&b, "# Neither of those two files survives a sysupgrade on its own.\n")
-	fmt.Fprintf(&b, "printf '%%s\\n' %s %s >> /etc/sysupgrade.conf\n\n", keyPath, listPath)
+	// Neither file survives sysupgrade on its own, and a missing key is the most
+	// common cause of UNTRUSTED signature after a firmware upgrade.
+	//
+	// keep.d rather than /etc/sysupgrade.conf. sysupgrade reads both --
+	// list_static_conffiles feeds `find` from /etc/sysupgrade.conf and
+	// /lib/upgrade/keep.d/* together -- but this one is a whole file rather than
+	// lines appended to somebody else's. Re-running the install rewrites it instead
+	// of adding a second copy of both paths, which `>>` does every time, and
+	// removing the feed is `rm` rather than editing a config by hand.
+	//
+	// Verified on 25.12.5: with the keep.d file present `sysupgrade
+	// --create-backup` contains both paths; without it, neither.
+	fmt.Fprintf(&b, "# Keep the key and the repository across a firmware upgrade.\n")
+	fmt.Fprintf(&b, "mkdir -p /lib/upgrade/keep.d\n")
+	fmt.Fprintf(&b, "printf '%%s\\n' %s %s > /lib/upgrade/keep.d/%s\n\n", keyPath, listPath, f.Name)
 	fmt.Fprintf(&b, "apk update && apk add %s\n", pkg)
 	return b.String()
 }
@@ -121,7 +134,7 @@ func Warnings(in Input) []Warning {
 			Title: "Attended Sysupgrade will not carry these packages across.",
 			Body: "`owut` forwards no custom repositories, and the sysupgrade server's `repository_allow_list` is empty by default, " +
 				"which denies everything. Either exclude these packages from the `owut` run and reinstall them afterwards, " +
-				"or use an ordinary `sysupgrade` with the `/etc/sysupgrade.conf` lines above.",
+				"or use an ordinary `sysupgrade`, which keeps the key and the repository through the `/lib/upgrade/keep.d` entry above.",
 		},
 		{
 			Title: "Installing the key trusts this feed for every package name.",

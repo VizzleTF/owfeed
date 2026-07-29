@@ -2,6 +2,32 @@
 
 Dates are when the tag was cut. Anything not listed is documentation or tests.
 
+## v0.3.1 — 2026-07-29
+
+- **Added:** `owfeed index` writes `badge/<package>.json` and
+  `badge/<package>-releases.json` into the feed root, in the shape shields.io renders
+  as an endpoint badge. A maintainer whose package a feed carries can now show it,
+  with a version that updates when the feed does.
+
+  The obvious approach does not work: shields rejects a JSONPath filter over the
+  existing `index.json` with "query not supported", so selecting a package by name is
+  impossible and selecting it by position is wrong, because nothing fixes the order of
+  an index. Publishing one file per package makes the URL name the package instead.
+
+  The numbers are read back from the index that was just built rather than taken from
+  the config, so a badge cannot claim a version the feed is not serving.
+
+- **Changed:** the install snippet keeps the key and the repository across a firmware
+  upgrade through `/lib/upgrade/keep.d/<feed>` rather than by appending to
+  `/etc/sysupgrade.conf`. sysupgrade reads both -- `list_static_conffiles` feeds `find`
+  from the two together -- but a file of the feed's own is idempotent where `>>` is
+  not: re-running the install rewrites it instead of adding a second copy of both
+  paths, and removing the feed is `rm` rather than editing a config by hand.
+
+  Verified on 25.12.5: with the keep.d file present `sysupgrade --create-backup`
+  contains the key and the repository list; without it, neither; and running the
+  snippet twice leaves two lines rather than four.
+
 ## v0.3.0 — 2026-07-29
 
 - **Added:** `signing.sign-packages: false` now does what it says. The field was in the
