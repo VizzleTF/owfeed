@@ -392,8 +392,8 @@ walks through both sides.
 
 - [Examples](docs/examples.md) — a LuCI theme, a two-package feed, a compiled binary.
   *([Русский](docs/examples_ru.md))*
-- [Design summary](docs/DESIGN_en.md) — why the tool exists, the facts it is built on, and the
-  decisions worth arguing about. *([Полный документ](docs/DESIGN.md), по-русски.)*
+- [Design summary](docs/DESIGN.md) — why the tool exists, the facts it is built on, and the
+  decisions worth arguing about. *([Полный документ](docs/DESIGN_ru.md), по-русски.)*
 - [Verified package manager behaviour](docs/apk-behaviour.md) — what apk and opkg actually do, with
   reproductions.
 

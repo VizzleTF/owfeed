@@ -389,7 +389,7 @@ usign-ключом: это схема, которую OpenWrt уже везёт 
 
 - [Примеры](docs/examples_ru.md) — тема LuCI, фид из двух пакетов, скомпилированный бинарь.
   *([English](docs/examples.md))*
-- [Дизайн](docs/DESIGN.md) — полный документ. *([English summary](docs/DESIGN_en.md).)*
+- [Дизайн](docs/DESIGN_ru.md) — полный документ. *([English summary](docs/DESIGN.md).)*
 - [Проверенное поведение пакетных менеджеров](docs/apk-behaviour.md) — что apk и opkg делают на
   самом деле, с воспроизведениями *(англ.)*.
 

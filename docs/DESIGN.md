@@ -1,734 +1,158 @@
-# owfeed — инструмент сборки, подписи и публикации apk-фидов для OpenWrt 25.12+
+# owfeed — design summary
 
-## Context
+*The full design document is [DESIGN_ru.md](DESIGN_ru.md), in Russian. This is the argument
+in two pages: why the tool exists, the facts it is built on, and the decisions that
+are not obvious. It is a summary and not a translation — where the two disagree, the
+code and [apk-behaviour.md](apk-behaviour.md) are the authority, because those were
+measured.*
 
-OpenWrt 25.12 (март 2026) выкинул opkg и перешёл на apk (APKv3, apk-tools 3.0.5). Это сломало
-весь third-party ecosystem: индекс теперь бинарный `packages.adb`, подпись — EC prime256v1
-вместо usign/ed25519, `ipkg-make-index.sh` мёртв, документации по своему фиду нет.
+## The problem
 
-Что подтверждено ресерчем (~180 источников, три отчёта):
+OpenWrt 25.12 replaced opkg with apk (APKv3, apk-tools 3.0.5). Every third-party feed
+broke at once: the index is now a binary `packages.adb`, signatures are EC prime256v1
+instead of usign ed25519, and `ipkg-make-index.sh` is gone with nothing documented in
+its place.
 
-- **Массовость.** `ERROR: <file>.ipk: v2 package format error` найден в 11+ независимых репозиториях
-  (passwall2, youtubeUnblock, argon, luci-app-temp-status, ps3netsrv, ngrok, loki-exporter, tailscale…).
-  `UNTRUSTED signature` — в стольких же. Мейнтейнеры отвечают «не буду конвертить» (passwall2 закрыл
-  как *not planned*), «собирайте сами» (gSpotx2f), «сидите на 24.10» (rickparrish) или молчат
-  (wrtbwmon #42, sing-box #3859 открыт с марта без ответа).
-- **Вопрос повторяется каждый цикл.** Форум: `t/240519` (сен 2025) → `t/252104` (22 июля 2026),
-  одна и та же просьба. `openwrt#16946` (stangri): «дайте аналог `ipkg-make-index.sh`» — закрыт
-  без ответа. IceG: «нужен скрипт, который подпишет пакеты и сделает список **без полной сборки**».
-- **Инструмента нет.** Каждый фид в природе — рукописный GitHub Actions YAML вокруг
-  `openwrt/gh-action-sdk` плюс копипастнутый deploy. Ближайший аналог — `mossdef-org/repo.mossdef.org`
-  (17 КБ bash, заточен под одну org, арку восстанавливает парсингом имени файла).
-- **Экономика.** Waujito (youtubeUnblock): «x2 пакетов и x2 нагрузки на воркфлоу». nym-vpn гоняет
-  18 параллельных job'ов. Для **noarch**-пакета (LuCI-тема/приложение — это большинство того, что
-  шипают третьи лица) это 35 SDK-сборок по 20 минут ради одного архитектурно-независимого файла.
+`ERROR: <file>.ipk: v2 package format error` appears in at least eleven independent
+repositories. `UNTRUSTED signature` in as many. The maintainers' answers were "I will
+not convert", "build it yourself", "stay on 24.10", or silence. The forum asks the
+same question every release cycle, and the request that keeps recurring is precise:
+*a script that signs packages and produces an index, without a full SDK build.*
 
-**Решения приняты пользователем:** продукт для сообщества; CLI + GitHub Action + reusable workflow;
-оба пути сборки (SDK и SDK-less `apk mkpkg`); публикация в GitHub Pages (deploy-pages artifact),
-Cloudflare R2 и self-host (rsync/S3). GitHub Releases как хост пакетов отвергнут.
+No such tool exists. Every feed in the wild is a hand-written GitHub Actions file
+around `openwrt/gh-action-sdk` plus a copy-pasted deploy step.
 
-Директория `package_installer` пуста — greenfield. Соседний `luci-theme-footstrap` — референс
-существующих практик пользователя, из него переносим два паттерна (см. ниже).
+The cost falls hardest where it is least deserved. A LuCI theme or app is
+architecture-independent — one file serves every target — and the status quo builds
+it 35 times, twenty minutes each, to produce 35 identical copies.
 
-**Имя:** `owfeed` (бинарь), `owfeed.yml` (конфиг). Читается как сосед `owut`. Занятость проверена
-2026-07-27: 0 репозиториев с таким именем на GitHub, хендл `github.com/owfeed` свободен, npm свободен.
-Репозиторий — `VizzleTF/owfeed`, public.
+## What owfeed is
 
----
-
-## Язык: Go
-
-Решающие факторы, в порядке важности:
-
-1. **Один артефакт.** Action не должен платить `docker pull` (~30 с) или `pip install` (~20 с)
-   на каждый из 35 job'ов матрицы. Статический бинарь ~10 МБ стартует за миллисекунды.
-2. **Убивает bootstrap usign.** Формат usign — base64: магия `Ed`, 8 байт keyid, 64 байта
-   ed25519-подписи. `crypto/ed25519` проверяет это в ~30 строках. Это удаляет
-   `tools/build-usign.sh` (сборку C-кода) из пути каждого потребителя.
-3. **Проверка редиректов и TLS — это фича продукта, а не сантехника.** `http.Client.CheckRedirect`
-   с `ErrUseLastResponse` даёт разбор каждого хопа; `crypto/x509` позволяет проверить цепочку
-   *без* дохода по AIA (что и делает mbedtls на роутере). На shell это не пишется.
-4. **Shell — это инкумбент и потолок.** 17 КБ bash у mossdef — лучший прецедент и одновременно
-   предел: нет схемы конфига, нет типизированных ошибок, macOS/BSD-расхождения (`sed -i ''`,
-   `stat -f`), метадата-гейты не юнит-тестируются.
-
-Rust — приемлемый рунner-up, отвергнут по скорости разработки для инструмента, который на 80% клей.
-`make-index-json.py` переписать нативно на Go — не тащить Python ради 60 строк JSON-трансформа.
-
----
-
-## Инварианты (нарушение любого = сломанный фид)
-
-Всё подтверждено чтением исходников apk-tools v3.0.5 и веток `openwrt-25.12`/`main`.
-
-| # | Факт | Следствие |
-|---|---|---|
-| 1 | Доверие течёт **от подписанного индекса**, не от пакета. Установка из репо верифицирует пакет по SHA-256 из уже доверенного `packages.adb`. | Одинокий `.apk` всегда UNTRUSTED. Выпускать голые `.apk` = обрекать юзеров на `--allow-untrusted` навсегда. |
-| 2 | Ветка `openwrt-25.12` **никогда** не подписывает отдельные `.apk` (коммит `084697e`). `CONFIG_SIGN_EACH_PACKAGE` есть только в `main` (`f20794a`). Но `apk mkpkg --sign-key` работает. | Подписывать каждый `.apk` — бесплатно и чинит `apk add ./file.apk` без флага **и** LuCI-загрузку (luci#8482: `package-manager-call` глушит неизвестные флаги через `-*) shift ;;` и физически не может передать `--allow-untrusted`). Никто так не делает. |
-| 3 | Ключ: EC prime256v1, **SEC1** PEM (`ecparam -genkey`), не PKCS#8 (`genpkey -algorithm EC`). | На PKCS#8 уже погорел мейнтейнер. Гейт в doctor. |
-| 4 | APKv3 сопоставляет ключи **по идентичности** (первые 16 байт SHA-512 от DER pubkey). Имя файла в `/etc/apk/keys` нерелевантно, несколько ключей сосуществуют. | Ротация почти бесплатна и нигде не описана. Но имя не должно коллидировать с `openwrt-*.pem` — каталоги сканируются `/etc/apk/keys` → `/lib/apk/keys`, побеждает первое имя. |
-| 5 | `arch: all` **отвергается** — нужно `noarch`. | `LUCI_PKGARCH:=all` требует трансляции. |
-| 6 | После `~` в версии допустимы **только hex** (это токен commit-hash), `-r<digits>` — последним. | Для снапшотов `_pre<N>`, не `~`. Ещё `~` вешает загрузку (openwrt#17237). |
-| 7 | **Никогда `-C zstd`.** OpenWrt собирает apk с `-Dzstd=disabled`. | zstd-индекс умирает на роутере: `ADB compression not supported`. Дефолт (deflate, магия `ADBd`) верный. |
-| 8 | OpenWrt использует режим **`ndx`**: строка в `repositories.d/*.list` — прямой URL **на файл** `packages.adb`. Арка НЕ добавляется apk, её вшиваешь сам. `.apk` лежат **плоско** рядом с индексом. | Форма `$base/$arch/Packages.adb` — другой режим, не наш. `mkndx` запускать с cwd = каталог публикации, аргумент `./*.apk`. |
-| 9 | `/etc/apk/keys/*.pem` **не переживают sysupgrade** (не conffile, не в `keep.d`). `repositories.d/customfeeds.list` — переживает (объявленный conffile `apk-*`), кастомный `myfeed.list` — нет. | Это причина №1 багрепортов «UNTRUSTED после апгрейда». Ни один существующий фид не выдаёт строку для `/etc/sysupgrade.conf`. |
-| 10 | apk **не ходит по 30x** с дефолтным `uclient-fetch` (openwrt#17180, открыт; robimarko отказался тянуть GNU wget в дефолт). | Убивает GitHub Releases (302 на `objects.githubusercontent.com`), сокращалки, apex→www, http→https. |
-| 11 | wget-бэкенд **игнорирует `If-Modified-Since`** — каждый `apk update` качает каждый индекс целиком. | Размер индекса — прямой налог на всех подписчиков. Гейт по размеру. |
-| 12 | Метадата в payload: `/lib/apk/packages/<name>.list` (отсортированный, с `/`), `.conffiles`, `.conffiles_static` (`<путь> <sha256>` — **это читает sysupgrade**), опц. `.rusers`/`.alternatives`. `CONTROL/` в payload — ошибка. | Без `.conffiles_static` конфиги юзера не переживают апгрейд. |
-| 13 | ABI-версия идёт на **имя** (`libjson-c5`, дефис только если база кончается цифрой) И дублируется в `--info "tags:openwrt:abiversion=N"`. | Иначе `GetABISuffix` в ImageBuilder не резолвит. |
-| 14 | owut не передаёт кастомные репозитории **вообще**. У ASU поля есть, но гейтятся `repository_allow_list`, который **по умолчанию пуст, а пустой запрещает всё**. | Attended sysupgrade ломается на третьесторонних пакетах (`422 Unknown package`). Говорить это вслух, не прятать. |
-| 15 | `apk add ./file.apk` пишет **пин по identity-hash** (`pkg><HASH`) в `/etc/apk/world`. Пакет больше никогда не обновится из репо. `/etc/apk/world` переживает sysupgrade — отсюда openwrt#22493. | Никогда не выдавать локальную установку в пользовательской документации. |
-| 16 | Если зависимость тянет смену провайдера `wget` (напр. `wget-nossl`) — у юзера **полностью ломается `apk update`** (openwrt#24270, вызвано установкой третьесторонних Argon `.apk`). | Гейт: ни одна зависимость не должна предоставлять `wget`. |
-
-Каноничные команды:
-
-```sh
-openssl ecparam -name prime256v1 -genkey -noout -out feed.pem   # SEC1 — верно
-openssl ec -in feed.pem -pubout -out feed.pub.pem
-
-apk mkpkg --info "name:X" --info "version:1.2.3-r1" --info "arch:noarch" \
-  --info "description:…" --info "depends:luci-base" \
-  --info "tags:openwrt:abiversion=5" \
-  --script "post-install:/path" --files "/staged/root" --output "X-1.2.3-r1.apk"
-
-cd <publish-dir> && apk mkndx --allow-untrusted --sign-key feed.pem --output packages.adb ./*.apk
-apk adbdump --format json packages.adb        # → index.json
-apk adbsign --sign-key feed.pem packages.adb  # переподписать без пересборки
-```
-
-Флаг `--sign-key` — канонический; в Makefile OpenWrt написано `--sign`, работает только через
-prefix-matching. Эмитить `--sign-key`, при этом фича-детектить через `--help`.
-
----
-
-## Архитектура пайплайна
-
-**Модель — stateless (как `deb-s3`/`repo-add`), не stateful (как aptly).** Стадии — чистые функции
-над каталогами:
+A single static Go binary that turns a directory into a signed feed. Stateless, like
+`deb-s3` or `repo-add` rather than aptly: each stage is a pure function over
+directories.
 
 ```
-sources ──build──►  out/<release>/<arch>/*.apk        ← ключа в этом процессе НЕТ
+sources ──build──►  out/<release>/<arch>/*.apk        ← no key in this process
                           │
-                       sign            --sign-key на каждый .apk        ← ключ здесь
+                       sign            per-package signature       ← key here
                           │
-                      index            cwd=каталог, ./*.apk → packages.adb
-                          │                                  + index.json + sha256sums + SBOM
-                       publish         пакеты СНАЧАЛА, индекс ПОСЛЕДНИМ
+                      index            packages.adb + index.json + sha256sums
                           │
-                       verify          чёрный ящик снаружи, без локального состояния
+                     publish           packages first, index last
+                          │
+                      verify           black box, from outside, over the documented URL
 ```
 
-Состояние живёт в трёх местах, намеренно:
-
-1. **`owfeed.yml`** — намерение человека, в git.
-2. **`owfeed.lock`** — производные факты (список арок, точечный релиз SDK, sha256, пин keyring),
-   в git, ревьюится в PR. Это то, что убивает хардкоженную матрицу meshtastic: новая арка приходит
-   как диф лок-файла, который человек апрувит.
-3. **Опубликованное дерево — и есть база данных.** Текущее состояние читается из живого
-   `packages.adb` через `adbdump`. Нет локальной БД и нет gh-pages-ветки, вечно копящей бинари
-   (фид-репо meshtastic уже ~2.6 ГБ при лимите Pages 1 ГБ — виновата история git). С `github-pages`
-   публикуем **артефакт**, не ветку, — истории не накапливается вовсе.
-
-Откат дёшево: `publish` сохраняет `packages.adb.prev` перед перезаписью; провал `verify` → авто-restore.
-Именованный staging→promote — после v1.0, по спросу.
-
-**Два уровня (сборочные репо никогда не держат ключ фида):**
-
-- *Один репо*: четыре job'а. `build` без ключа. `publish` — отдельный job с `environment: feed`
-  (обязательные ревьюеры), материализует ключ под `umask 077` в `$RUNNER_TEMP`, **отказывается,
-  если `$RUNNER_TEMP` резолвится внутри `$GITHUB_WORKSPACE`**. Это явное лечение футгана
-  `gh-action-sdk`, который пишет `PRIVATE_KEY` в `$TOPDIR` — а вызывающие регулярно заливают
-  дерево как артефакт. `owfeed` подписывает **после** выхода из SDK-контейнера и никогда не
-  передаёт `PRIVATE_KEY` в `gh-action-sdk`.
-- *Org с многими репо*: сборочные репо делают `owfeed build` и льют артефакты/релиз; фид-репо делает
-  `owfeed collect --from …` → `sign` → `index` → `publish`. Это паттерн stangri, но арка берётся
-  **из метадаты пакета**, а не парсингом имени файла.
-
-Конкурентность: `concurrency: owfeed-publish-<feed>` в GH плюс lease-объект (`.owfeed-lock`,
-TTL 15 мин, держатель + URL прогона) на S3/R2/rsync. Конфликт → exit 9.
-
----
-
-## Конфиг `owfeed.yml`
-
-Строгая схема: **неизвестный ключ — ошибка** (exit 2), не варнинг. JSON Schema публикуется,
-`init` пишет строку `# yaml-language-server: $schema=…`.
-
-### Минимум — noarch LuCI-тема, 8 строк
-
-```yaml
-version: 1
-feed:
-  name: footstrap
-  url: https://feed.footstrap.dev
-publish:
-  - target: github-pages
-packages:
-  - path: luci-theme-footstrap        # LUCI_PKGARCH:=all → noarch определяется сам
-```
-
-Остальное выводится: релиз-линия = свежая apk-линия; арки — из downloads.openwrt.org; layout —
-экосистемный; ключ — из `$OWFEED_SIGN_KEY`; `sign-packages: true`; keyring-пакет включён.
-
-### Полный — реальный мульти-пакетный фид (~60 строк)
-
-```yaml
-version: 1
-feed:
-  name: mossdef                  # → mossdef.pem, mossdef.list, mossdef-keyring
-  url: https://repo.mossdef.org  # ФИНАЛЬНЫЙ: без редиректов, сокращалок, apex→www
-  maintainer: "Jane Doe <jane@example.org>"
-layout:
-  path: "releases/{release}/{arch}"
-releases:
-  - line: "25.12"
-    default: true
-    arches: auto                 # выводятся и пинятся в owfeed.lock; хардкода матрицы НЕТ
-  - line: "snapshot"
-    arches: auto
-    prerelease: true             # собирается и публикуется, но не рекламируется в сниппете
-signing:
-  key: env:OWFEED_SIGN_KEY       # file:./mossdef.pem | env:VAR
-  sign-packages: true            # +--sign-key на каждый .apk → LuCI Upload работает
-  keyring-package: true          # ротация доезжает до уже установленных роутеров
-build:
-  sdk:
-    release: latest-point        # или "25.12.2"; НИКОГДА не SNAPSHOT
-  changed-only: true
-packages:
-  - path: net/https-dns-proxy                       # (a) компилируемый, SDK, все арки
-  - path: applications/luci-app-https-dns-proxy     # (b) SDK, arch:all → сборка 1 раз + fanout
-  - name: luci-theme-footstrap                      # (c) SDK-less: mkpkg, ~2 сек
-    build: mkpkg
-    arch: noarch                                    # НИКОГДА не "all"
-    version-from: makefile:./luci-theme-footstrap/Makefile
-    files: ./luci-theme-footstrap/dist/root
-    depends: [luci-base]
-    conffiles: ["/etc/config/footstrap"]            # → .conffiles + .conffiles_static
-    scripts:
-      post-install: ./pkg/post-install.sh
-  - path: libs/libfoo                               # (d) ABI-версионная библиотека
-    abiversion: 5                                   # → имя libfoo5 + tags:openwrt:abiversion=5
-overrides:                                          # типизированный аналог exceptions.yml mossdef
-  - match: { package: "luci-app-*" }
-    arch: noarch
-  - match: { package: "kmod-*" }
-    skip: "привязано к ABI ядра; третьесторонний фид не должен шипать kmod"
-publish:
-  - target: github-pages
-  - target: s3                                      # покрывает R2 и любой S3-совместимый
-    bucket: mossdef-feed
-    endpoint: "https://<acct>.r2.cloudflarestorage.com"
-    cache-control:
-      "*.apk": "public, max-age=31536000, immutable"
-      "packages.adb": "no-cache"
-  - target: rsync
-    dest: "feed@example.org:/srv/www/feed"
-retention:
-  keep-versions: 2
-  gc: true
-  gc-requires-green: true        # никогда не чистить из частичной сборки — гард mossdef
-```
-
-Минимальный кейс меньше, чем один только exceptions-файл mossdef (886 байт). Полный заменяет
-~150 строк YAML + хардкоженную матрицу на 36 записей + 19 строк `exclude:`.
-
-**`owfeed.lock`** (пишется машиной, коммитится, ревьюится): точечный релиз, полный список арок,
-URL и sha256 источника, пины `keyring_pin`/`sdk_key`/`sdk_key_sha256`, версия apk-tools.
-Данные `sdk_key`/`sdk_key_sha256` — те же, что сейчас руками разложены в матрице `build.yml`
-у footstrap и вычитываются оттуда `awk`'ом.
-
----
-
-## Получение хост-бинаря `apk`
-
-Порядок резолва, каждый шаг fail-closed:
-
-```
-1. --apk <path> / $OWFEED_APK          явно
-2. apk из $PATH                        только если apk-tools 3.x
-3. распаковать host apk из SDK-тарбола нужной линии    ← дефолт
-4. контейнер                           обязателен на darwin, если 1/2 не сработали
-```
-
-Пункт 3 — дефолт, потому что гарантирует совпадение поколения `mkpkg`/`mkndx` с apk на устройстве.
-Более новый хост-apk может выдать индекс, который таргет не разберёт, и это тихо до момента, когда
-у юзера ломается `apk update`. Версию брать из **последнего точечного релиза линии** (автопоиск,
-затем пин в лок). Никогда SNAPSHOT — mirror churn инвалидирует sha256 (урок mossdef).
-
-Верификация загрузки — обобщение того, что уже правильно сделано в
-`luci-theme-footstrap/luci-theme-footstrap/build-apk.sh:30-87`:
-
-```
-пин openwrt/keyring @ <commit>                       (вшит в бинарь, переопределяется в lock)
-GET raw.githubusercontent.com/openwrt/keyring/<пин>/usign/<sdk_key>   ← ДРУГОЙ ХОСТ
-    sha256(pubkey) == вшитый пин канала              иначе ОТКАЗ
-GET downloads.openwrt.org/…/sha256sums{,.sig}
-    ed25519-проверка sha256sums этим ключом (нативно на Go)  иначе ОТКАЗ
-GET тарбол SDK; sha256 против уже осмысленного подписанного списка   иначе ОТКАЗ
-распаковать staging_dir/host/bin/{apk,mkhash}; самотест `apk --version`
-```
-
-Принцип из комментария `build-apk.sh:38-42` переносится в доки дословно: `sha256sums`, отданный тем
-же хостом из того же каталога, **не является проверкой**; проверкой её делает подпись ключом,
-запиненным с другого хоста.
-
-Известная мина (mossdef): в SDK `apk` может быть скрипт-обёртка, `.apk.bin` с бандленным загрузчиком
-glibc, либо требовать весь `staging_dir/host/lib`. Самотест это ловит; при провале — распаковывать
-более широкое поддерево. **Прототипировать по каждой линии до релиза.**
-
----
-
-## CLI
-
-Глобальные флаги: `--config`, `-C <dir>`, `--format text|json`, `-v` (печатает **каждую** команду
-`apk` дословно), `--print-commands` (выдать эквивалентный shell-скрипт и выйти — инструмент никогда
-не чёрный ящик), `--frozen-lock` (дефолт в CI), `--no-network`.
-
-| Команда | Что делает |
-|---|---|
-| `owfeed init [--pages\|--r2\|--rsync]` | Скаффолдит `owfeed.yml`, workflow, `.gitignore` (+`*.pem`). Единственная команда, пишущая в репо юзера. |
-| `owfeed keygen [--name N] [--install] [--rotate-from old.pem]` | EC P-256 **SEC1** PEM, 0600. Печатает идентичность ключа, готовую строку `gh secret set` и строку для `sysupgrade.conf`. `--install` заодно кладёт pubkey в корень фида (эргономика `abuild-keygen -i`). |
-| `owfeed lock [--update]` | Обновляет выводимые арки и пины SDK. Печатает диф (`+ riscv64_generic  - riscv64_riscv64 (renamed)`). |
-| `owfeed arch list [--release L]` | Выводимая матрица, без побочек. JSON потребляется job'ом `plan`. |
-| `owfeed build [--release L] [--arch A] [--package P] [--changed-only] -o out/` | mkpkg- и/или SDK-путь → `out/<release>/<arch>/*.apk`. **Никогда не подписывает.** |
-| `owfeed collect --from gh-release:org/repo@tag --from artifact:<dir> -o stage/` | Двухуровневая схема: собрать `.apk` из сборочных репо. Арку читает **из метадаты пакета**. |
-| `owfeed sign [dir]` | `apk adbsign --sign-key` по россыпи `.apk`. Идемпотентно. |
-| `owfeed index [dir] [--incremental]` | `mkndx` + `index.json` + `sha256sums` + CycloneDX SBOM. Никогда `-C zstd`, никогда `--compat`. |
-| `owfeed publish [dir] [--target T] [--dry-run]` | Заливает **пакеты первыми, индекс последним**. Берёт single-writer lease. |
-| `owfeed doctor [--offline] [--fail-on warn\|error]` | Все локальные и удалённые проверки (ниже). |
-| `owfeed verify [--url U]` | Пост-публикационный чёрный ящик по **задокументированному** URL. Локально ничего не требует. |
-| `owfeed smoke [--release L]` | Настоящий `apk add` внутри `openwrt/rootfs:<…>`, **без** `--allow-untrusted`. |
-| `owfeed install-snippet [--format md\|sh\|html\|json]` | Единственный источник правды для пользовательского блока. |
-| `owfeed gc [--dry-run]` | Чистка по `retention`. Отказывается при незелёной сборке или пустом keep-set. |
-| `owfeed release` | Happy path: `lock --check` → `build` → `sign` → `index` → `doctor --offline` → `publish` → `verify`. |
-| `owfeed explain OWF512` | Развёрнутая справка по любому ID проверки: что значит, почему кусается, как чинить. |
-
-Композируемые: `build \| sign \| index \| publish \| verify` — каждая каталог-на-входе/каталог-на-выходе,
-без скрытого состояния, работает отдельно на ноутбуке.
-
-**Коды выхода:** 0 ок · 1 внутренняя ошибка · 2 конфиг/использование · 3 сборка · 4 ключ/подпись ·
-5 индекс · 6 публикация · **7 проверка провалена** · **8 апстрим недоступен** · 9 конфликт lock/lease.
-Различие 7 и 8 несущее: CI может ретраить 8 и никогда не должен ретраить 7.
-
-**Fail-closed:** проверка, которую **невозможно выполнить**, считается **проваленной**, а не
-пропущенной. Неизвестный ключ конфига → exit 2 без «may be you meant». `--allow-untrusted`
-появляется ровно в одном месте — `mkndx` по нашим же неподписанным входам — и **никогда** в тексте
-для пользователя. `publish` отказывается публиковать неподписанный индекс, флага для обхода нет.
-Ошибка состоит из четырёх частей: что упало, **точная упавшая команда**, как чинить, `owfeed explain OWFxxx`.
-
----
-
-## Матрица архитектур
-
-**Хардкода арок нет нигде, кроме таблицы переименований на 3 записи.**
-
-Источник — листинг каталога `…/releases/<point>/packages/`: каждая поддиректория есть арка.
-Один запрос, авторитетно.
-
-*Исправлено по факту реализации.* Дизайн ставил первым `.overview.json` — **на 25.12 в нём нет
-`arch_packages` вообще**, только `id`/`titles`/`target` на профиль (проверено на 25.12.5, 1932
-профиля, ноль значений арки). Поле есть в пер-таргетных `profiles.json`, но это ~60 запросов ради
-того, что листинг отдаёт одним. Реализован листинг; `profiles.json` не понадобился.
-
-Живой прогон подтверждает: `riscv64_generic` (не `riscv64_riscv64`), `powerpc_8548` (не `8540`),
-нет `mips_4kec`. Инлайновые тернарники meshtastic и 19 строк `exclude:` исчезают: «переименованная»
-арка — это просто арка, которой больше нет в источнике. (`mipsel_24kc_24kf` на 25.12.5 **есть** —
-дизайн утверждал обратное; ровно поэтому список выводится, а не пишется руками.)
-
-Защита от смены формата страницы: если выведено меньше 10 арок — отказ с объяснением, что листинг
-изменился, а не публикация фида, покрывающего почти ничего.
-
-Кэша с ревалидацией нет: листинг генерируется nginx autoindex на каждый запрос и не отдаёт ни
-`ETag`, ни `Last-Modified`, ревалидировать нечего. Сохранённая копия существует только для
-`--no-network` и берётся отдельным вызовом, а не молчаливым фолбэком: набор, выведенный когда-то,
-и набор, выведенный сейчас, — разные вещи, и выбор между ними не должен зависеть от того, была ли
-сеть. Цена невелика — запрос делает `owfeed lock`, а не каждая сборка.
-
-В лок пишется URL источника, но **не** его sha256: листинг несёт размеры и даты файлов, его хеш
-меняется при любой перепубликации пакета и означал бы шум вместо факта. В CI дефолт
-`--frozen-lock`: расхождение с локом → exit 9 с дифом и командой `owfeed lock --update`. Новая арка
-в апстриме никогда не меняет тихо то, что вы публикуете.
-
-Таблица переименований (единственное вшитое знание об арках) нужна только чтобы GC и отчёты были
-читаемы: при исчезновении арки `lock --update` пишет `renamed → X`, а `gc` держит старый каталог
-grace-период (`retention.rename-grace: 90d`), а не удаляет его из-под подписчиков, у которых в
-`.list` всё ещё старое имя.
-
-**noarch:** дефолт `fanout` — идентичный `.apk` (тот же sha256) кладётся в каждый arch-каталог и
-попадает в каждый индекс. Обоснование: в режиме `ndx` клиент читает ровно один индекс; отдельная
-noarch-строка означала бы вторую запись в `.list`, а так как wget-бэкенд игнорирует
-`If-Modified-Since` — это **вторая полная закачка индекса при каждом `apk update`, навсегда**.
-Издержка ограничена (35 копий темы по ~50 КБ = 1.75 МБ). Режим `shared` через `--pkgname-spec`
-предлагается, но помечен непроверенным.
-
----
-
-## `doctor` / `verify` — главный дифференциатор
-
-Стабильные ID, `owfeed explain <ID>` на каждый. 1xx конфиг · 2xx метадата · 3xx подпись ·
-4xx индекс · 5xx транспорт · 6xx на устройстве · 7xx документация.
-
-### До публикации, офлайн, по подготовленному дереву
-
-| ID | Проверка |
-|---|---|
-| 201 | `arch` = `noarch`, не `all`; и `arch ∈` выведенному набору линии |
-| 202 | Версия соответствует грамматике APKv3: после `~` только hex, `-r<digits>` последним. Предлагает `_pre<N>` |
-| 203 | `description` ≤ 512 байт (luci#8561) |
-| 204 | Нет `"`, `` ` ``, `$`, `\` в значениях `--info` (openwrt#16950). Санитизирует; **падает**, если санитизация изменила смысл |
-| 205 | `installed-size`/`file-size`/`hashes` не передаются в `--info` (apk их отвергает) |
-| 206 | Тип `--script` из допустимых семи; **варнинг на `trigger`** (OpenWrt не использует ни одного) |
-| 207 | Сайдкары в payload: нет `CONTROL/`; `.list` отсортирован, с `/`, **точно равен** набору файлов; `.conffiles` ⊇ каждый шипаемый `/etc/config/*`; строки `.conffiles_static` = `<путь> <sha256>` и хеши сходятся |
-| 208 | ABI: суффикс на имени (дефис только если база кончается цифрой) + `tags:openwrt:abiversion=N` равен суффиксу |
-| 209 | Зависимости: нет `kmod-*`; **нет зависимости, предоставляющей `wget`** (openwrt#24270); каждая зависимость резолвится по официальному индексу |
-| 210 | **Коллизия имени с официальным пакетом** релиза → жёсткий отказ без явного override с причиной |
-| 301 | Ключ — EC prime256v1 **SEC1**, не PKCS#8. При провале печатает точную команду openssl |
-| 302 | Имя публикуемого pubkey не коллидирует с `openwrt-*.pem`. Печатает вычисленную идентичность ключа |
-| 303 | Каждый `.apk` подписан (при `sign-packages`) и верифицируется опубликованным pubkey |
-| 401 | Магия `packages.adb` = **`ADBd`**. zstd → жёсткий отказ |
-| 402 | В индексе нет префиксов пути — каждая запись резолвится в плоского соседа (ловит `mkndx` из не того cwd) |
-| 403 | Подпись индекса есть; идентичность подписанта == ожидаемой |
-| 404 | Индекс round-trip'ится через `adbdump --format json`; каждый упомянутый файл существует локально с совпадающим sha256 и размером |
-| 405 | Размер индекса: **варнинг > 1 МБ, отказ > 8 МБ** — с причиной (каждый подписчик качает его целиком при каждом `apk update`). Предлагает разбить фид |
-| 501 | Байтовые бюджеты цели: Pages ~1 ГБ; jsDelivr 20 МБ/файл, если включён |
-
-Проверка 207 — обобщение существующего `luci-theme-footstrap/tools/conffiles.mjs`, самого ценного
-метадата-гейта в экосистеме, который сейчас переизобретается в каждом репо регуляркой по Makefile.
-В `owfeed` он работает по реально подготовленному payload'у (значит, покрывает и SDK-, и mkpkg-путь)
-и вдобавок сверяет хеши `.conffiles_static`.
-
-### После публикации, чёрный ящик, только по задокументированному URL
-
-| ID | Проверка |
-|---|---|
-| **510** | **Нет редиректов.** Любой 30x на `feed.pem`, `packages.adb` или выборочном `.apk` — жёсткий отказ с печатью цепочки хопов. Одна эта проверка отменяет GitHub Releases, сокращалки, apex→www и http→https |
-| 511 | **Полнота TLS-цепочки по семантике mbedtls.** Проверять отданную цепочку **без** дохода по AIA `caIssuers`, против `ca-bundle` OpenWrt, а не системного стора хоста. Цепочка «только лист» проходит в curl и падает на роутере |
-| 512 | Заголовки кэша: `packages.adb` — `no-cache`, `*.apk` — длинный TTL. Любой `.apk` из индекса, который 404-ит или хешируется иначе, чем заявлено = **CDN skew**, жёсткий отказ |
-| 513 | **Неизменяемость.** Уже опубликованное имя `.apk` обязано иметь побайтово то же содержимое. Отказ на «та же версия, новые байты» — корень skew-ошибок целостности |
-| 520 | **Задокументированный сниппет, исполненный буквально.** Забрать `feed.pem` по точному URL из README; забрать `.list` URL с подстановкой каждой выведенной арки; проверить 200 и правдоподобное содержимое |
-| 701 | **Дрейф документации.** Блок установки в `README.md` обязан побайтово совпадать с `owfeed install-snippet`. Этот гейт ловит живой баг meshtastic, где README ведёт на `/25.12/`, который 404-ит, потому что деплой кладёт в `/openwrt-25.12/` |
-
-### `owfeed smoke` — доказательство, что `apk add` работает
-
-```sh
-docker run --rm -i openwrt/rootfs:x86-64-25.12.2 sh -s <<'EOF'
-  apk add ca-bundle libustream-mbedtls
-  wget https://repo.mossdef.org/mossdef.pem -O /etc/apk/keys/mossdef.pem
-  echo "https://repo.mossdef.org/releases/25.12/$(cat /etc/apk/arch)/packages.adb" \
-    > /etc/apk/repositories.d/mossdef.list
-  apk update
-  apk add luci-app-mossdef            # БЕЗ --allow-untrusted. Упало — фид сломан.
-EOF
-```
-
-Плюс три ассерта в том же контейнере:
-
-- **601a** `apk add ./pkg.apk` с установленным ключом и **без** `--allow-untrusted` — эмпирическая
-  проверка утверждения про подпись каждого пакета (и, следовательно, про починку LuCI Upload).
-- **601b** после локальной установки — grep `/etc/apk/world` на пин `pkg><HASH`. Подтверждает, что
-  пин существует, чтобы `install-snippet` честно предупреждал и никогда не выдавал локальную установку.
-- **602** выживание при sysupgrade: убедиться, что `/etc/apk/keys/<feed>.pem` не conffile и не в
-  `keep.d`, затем что строка сниппета в `sysupgrade.conf` заставляет `sysupgrade -l` его перечислить.
-
-Отчёт: человекочитаемая таблица; `--format json` → GitHub-аннотации на конкретную строку YAML.
-`--fail-on error` дефолт. У корректностных гейтов выключателя нет.
-
----
-
-## Ключи
-
-**Генерация** — нативно на Go, семантически идентично `openssl ecparam -name prime256v1 -genkey`.
-Пишет 0600, отказывается писать внутрь git-worktree без `--force`, добавляет `*.pem` в `.gitignore`,
-печатает идентичность ключа и точную строку `gh secret set`.
-
-**Хранение в CI:** секрет Actions → `signing.key: env:OWFEED_SIGN_KEY`. Материализуется под
-`umask 077` в `$RUNNER_TEMP`, никогда в `$GITHUB_WORKSPACE`, зануляется на выходе. Publish — отдельный
-job с `environment:`, чтобы форк-PR до него не дотянулся. Вход `PRIVATE_KEY` у `gh-action-sdk`
-**не используется никогда**.
-
-**Ротация** — эксплуатирует то, что APKv3 матчит ключи по идентичности, а значит имена в
-`/etc/apk/keys` нерелевантны и ключи сосуществуют:
-
-```sh
-owfeed keygen --name feed-2027 --rotate-from feed.pem
-# 1. опубликовать ОБА pubkey (старый остаётся) и поднять <feed>-keyring, подписанный СТАРЫМ ключом,
-#    payload которого кладёт /etc/apk/keys/feed-2027.pem. Подписчики получат через `apk upgrade`.
-# 2. окно перекрытия: двойная подпись индекса
-owfeed index --key feed.pem --key feed-2027.pem
-# 3. после окна
-owfeed keygen --finish-rotation     # adbsign --reset-signatures --sign-key new.pem
-```
-
-Шаг 2 зависит от того, принимает ли `mkndx` повторный `--sign-key` — **не проверено, риск №1**.
-Фолбэки по порядку: (a) дописать подпись через `apk adbsign --sign-key new.pem packages.adb` после
-`mkndx`; (b) два файла индекса (`packages.adb` старым, `packages-2027.adb` новым) и переключение
-документированного URL в конце окна. Работающий вариант детектится один раз и кэшируется в локе.
-
-**Keyring-пакет — по умолчанию включён.** Никто так не делает, а это единственный механизм, которым
-ротированный ключ доезжает до уже установленных роутеров без ручного шага. Устройство: noarch,
-собран через mkpkg, подписан **текущим** ключом, payload = `/etc/apk/keys/<feed>-<n>.pem`, плюс
-идемпотентный `post-install`, дописывающий путь ключа и путь `.list` в `/etc/sysupgrade.conf`
-(`grep -qxF || echo >>`). Файл ключа conffile'ом **не объявляется**.
-
-**Выживание при sysupgrade — по файлам, не по каталогу:**
-
-```sh
-printf '%s\n' /etc/apk/keys/feed.pem /etc/apk/repositories.d/feed.list >> /etc/sysupgrade.conf
-```
-
-Форумное предупреждение против перечисления всего каталога `/etc/apk/keys` механически верно и
-соблюдается: sysupgrade объединяет по перечисленным путям, а `find` рекурсивен, поэтому каталог
-сохранит `openwrt-*.pem` **старого образа**; в сочетании со сканом «побеждает первое имя» устаревший
-сохранённый `openwrt-2512.pem` затенит обновлённую копию из нового образа.
-
-**Пробел с отзывом — сказать честно.** У apk нет ни CRL, ни срока годности, ни сигнала «ключ мёртв».
-Компрометация ключа подписи фида плюс контроль над URL фида = полная root-компрометация каждого
-подписчика, и пути восстановления для офлайн-устройств не существует. `owfeed` смягчает
-(ключа нет в сборочном job'е; publish за protected environment; ротация дешёвая настолько, что её
-реально делают; варнинг, когда ключу > 2 лет), но не утверждает, что отзыв работает.
-
-**Предупреждение про trust anchor.** Рассуждение, стоящее за решением footstrap отказаться от
-фид-модели, — верное и идёт в доки, а не в подвал: ключ в `/etc/apk/keys` валидирует индекс,
-заявляющий **любое** имя пакета, так что скомпрометированный фид может подсунуть более старшую
-версию `dropbear` или `base-files` и выиграть резолвинг. Отсюда проверка 210, и `owfeed init`
-печатает один раз:
-
-> Публикуя фид, вы просите пользователей поставить ваш ключ как trust anchor. Если ваш проект —
-> один пакет, который ставят изредка, подписанные россыпью артефакты (как делает `luci-theme-footstrap`
-> с отсоединённой usign-подписью, проверяемой инсталлером) — меньшая просьба. Фид нужен, когда вы
-> шипаете несколько пакетов или хотите, чтобы работал `apk upgrade`.
-
----
-
-## Вывод для пользователя
-
-Единственный источник правды — `owfeed install-snippet`, сверяется с README проверкой 701:
-
-```sh
-# Предпосылки HTTPS на стоковом образе:
-apk add ca-bundle libustream-mbedtls
-
-wget https://repo.mossdef.org/mossdef.pem -O /etc/apk/keys/mossdef.pem
-echo "https://repo.mossdef.org/releases/25.12/$(cat /etc/apk/arch)/packages.adb" \
-  > /etc/apk/repositories.d/mossdef.list
-printf '%s\n' /etc/apk/keys/mossdef.pem /etc/apk/repositories.d/mossdef.list >> /etc/sysupgrade.conf
-apk update && apk add luci-app-mossdef
-```
-
-Намеренные детали: `cat /etc/apk/arch`, а не `apk --print-arch` (последний возвращает вкомпилированный
-дефолт, который может отличаться). URL — прямой путь к `packages.adb`. Строка `sysupgrade.conf` —
-лечение багрепорта №1 после апгрейда, и ни один существующий фид её не выдаёт. С появлением
-keyring-пакета (v0.2) четвёртая строка схлопывается в `apk add mossdef-keyring`.
-
-**Просматриваемая страница индекса** — статический HTML в корень фида из `index.json`, без JS:
-корневая страница + по странице на (релиз, арку) с пакетами, версиями, размерами, sha256, датами,
-копипастным сниппетом и уведомлением про ASU. Всегда пишется `.nojekyll` (`enable_jekyll: true`
-на дереве бинарей у meshtastic — баг: Jekyll выбрасывает пути на `_` и `.`).
-
-**Бесплатные артефакты, которых нет ни у кого:** `index.json` в формате owut/ASU/firmware-selector,
-`sha256sums`, `Packages.bom.cdx.json` (CycloneDX SBOM), аттестации `actions/attest-build-provenance`
-(SLSA Build L2; L3 через reusable workflow).
-
-**Уведомление про ASU/owut** — фиксированный текст, всегда рендерится, не смягчается: attended
-sysupgrade эти пакеты не сохранит, потому что owut не передаёт кастомные репозитории вообще, а у ASU
-`repository_allow_list` по умолчанию пуст и пустой запрещает всё. Варианты: исключить пакеты из
-прогона owut и переустановить; поднять свой ASU с allow-list'ом; обычный `sysupgrade` со строками
-`sysupgrade.conf` выше.
-
-Плюс предупреждение, которое `install-snippet` печатает и никогда не нарушает: **не делайте
-`apk add ./file.apk`** — это пишет identity-hash пин в `/etc/apk/world`, и пакет больше никогда не
-обновится из фида.
-
----
-
-## Этапы
-
-**v0.1 — «лучше статус-кво для одного мейнтейнера» (2–3 недели).** Go-бинарь под linux+darwin.
-Получение apk из SDK-тарбола с **нативной Go-проверкой usign** (без C-bootstrap). Команды: `init`,
-`keygen`, `build` (**только mkpkg-путь**), `index`, `publish github-pages`, `install-snippet`,
-`doctor` (2xx, 301–303, 401–405, 510, 520). Одна релиз-линия. `arches: auto` + `owfeed.lock`.
-
-*Режем из v0.1:* SDK-сборки, R2/rsync, GC, keyring-пакет, SBOM, `smoke`, инкрементальный индекс,
-просматриваемую страницу.
-
-Обоснование: noarch/mkpkg-путь имеет лучшее соотношение боли к усилию во всей экосистеме. LuCI-темы
-и приложения — большинство того, что шипают третьи лица, SDK им не нужен вообще, и это ровно тот
-случай, где статус-кво требует 35 сборок по 20 минут ради одного архитектурно-независимого файла.
-Замерено: один noarch-пакет на 35 арок — собран, подписан, проиндексирован, разложен под публикацию —
-**25 секунд** на ноутбуке, и полученный фид ставится на `openwrt/rootfs:x86-64-25.12.4` через
-`apk add` **без** `--allow-untrusted`.
-
-**Граница mkpkg-пути, которую дизайн обходил молчанием.** `apk mkpkg` пакует *подготовленный* rootfs,
-он его не собирает. Для LuCI-пакета это значит, что CSS должен быть уже собран.
-
-**Переводы — исключение, и это разворот от первого решения.** Сначала было решено `.po` не
-компилировать: `po2lmo` живёт в `hostpkg/bin` и появляется только после host-сборки `luci-base`, в
-SDK-тарболе его нет, а имя `.lmo`-каталога — packaging-решение, а не выводимое.
-
-Второй аргумент верен, первый — не причина отказываться, а причина сделать самим. Формат LMO —
-хеш-таблица SuperFastHash плюс индекс из 16-байтовых записей, ~230 строк на Go. Реализовано в
-`internal/lmo`; вывод **побайтово совпадает** с настоящим `po2lmo` (собран из
-`modules/luci-base/src/po2lmo.c`) на обоих реальных каталогах footstrap — 12 КБ русского с
-множественными формами и 11 КБ испанского с контекстами. Golden-тест держит это свойство: таблица
-переводов, которая «почти совпадает», возвращает не ту строку.
-
-Про имя каталога — оно стало полем конфига, а не догадкой:
-
-```yaml
-i18n:
-  from: ./luci-theme-footstrap/i18n     # каталог с <lang>/*.po
-  basename: footstrap-theme             # по умолчанию — имя самого .po, как в luci.mk
-```
-
-`luci-theme-footstrap` ставит `footstrap-theme`, потому что раньше шипал переводы отдельными
-пакетами `luci-i18n-footstrap-<lang>`, и роутер, обновляющийся с того релиза, всё ещё владеет
-`footstrap.ru.lmo`. Тот же путь = конфликт файлов = apk отказывает ровно в том апгрейде, ради
-которого переименование и делалось. Решение принимает мейнтейнер, а не эвристика.
-
-Обоснование разворота: причина отказа была в том, что «owfeed не должен становиться вторым
-`luci.mk`». Но owfeed уже генерирует `.list`, `.conffiles`, `.conffiles_static` — это ровно та же
-работа. А цена бездействия несимметрична: LuCI читает `.lmo` и игнорирует `.po` полностью, так что
-пакет без компиляции ставится чисто и не имеет переводов вообще. Молчаливая потеря — как раз то,
-что owfeed существует предотвращать.
-
-Исходники в payload остаются ошибкой: `.po`/`.pot`, `.scss`/`.less`, `node_modules/`, `.git`,
-`.DS_Store` — отказ с указанием файла и причины, а для `.po` ещё и с указанием на `i18n.from:`.
-
-Проверено на роутере: каталоги приезжают в `/usr/lib/lua/luci/i18n/` с правильными именами,
-владельцем `root` и попадают в `.list` пакета. Полная сборка темы из исходников (CSS) — SDK-путь, v0.2.
-
-**v0.2 — «работает для реального мульти-пакетного фида».** ~~SDK-сборки через `gh-action-sdk` с
-матрицей из лок-файла.~~ **СНЯТО 2026-07-28 — см. ниже.** ~~GitHub Action + reusable workflow.~~
-**СДЕЛАНО в v0.1: `setup/action.yml` + `.github/workflows/feed.yml`.** `collect` (двухуровневая
-схема, арка из метадаты). Подпись каждого пакета + `smoke`, доказывающий утверждение про LuCI
-Upload. Keyring-пакет. Цели R2 и rsync. `gc` с зелёным гейтом. `verify` с 511/512/513.
-Проверки 209, 210, 601, 602, 701.
-
-**SDK-сборки сняты не как «отложено», а как «не наша задача».** `build: sdk` отвергается
-валидатором by design (`internal/config/validate.go`), с указателем, куда идти. Три причины, по
-убыванию силы. У фичи нет потребителя: эталонный фид `owfeed-packages` держит `packages:` пустым
-намеренно, и его доктрина сборку прямо запрещает — реализовать пришлось бы самый сложный компонент
-ради сценария, который собственный флагманский фид не разрешает. Реализация тянет за собой таблицу
-таргетов, которая двигается с каждым релизом OpenWrt, — самое дорогое дублирование из возможных,
-и у [owlab](https://github.com/VizzleTF/owlab) она уже есть. И сам аргумент «пакет надо собрать
-перед публикацией» — из мира тестирования: `luci.mk` минифицирует JS и CSS по дороге в пакет, и
-«работает несминифицированным, ломается сминифицированным» невидимо, пока кто-то не соберёт.
-Интерфейс вместо кода — [контракт артефакта](artifact-contract.md): собрал чем угодно, положил в
-`dist/<arch>/`, дальше owfeed. Границы целиком — [ECOSYSTEM.md](ECOSYSTEM.md).
-
-**v1.0 — «годно для чужих репозиториев».** Конфиг v1 заморожен, JSON Schema опубликована.
-`explain` на каждый ID. Инкрементальный переиндекс (если снимется риск №6). Откат через
-`packages.adb.prev`. SBOM + provenance. Просматриваемый индекс. Финализирована история с macOS.
-Ротация отрепетирована end-to-end. `smoke` в собственном CI по каждой релиз-линии.
-
-**Режем осознанно:**
-
-- ~~**ipk / 24.10 до v1.0.**~~ *Сделано раньше плана, и решение оказалось неверным.*
-
-  Аргумент был: другой индекс, другая модель доверия, почти удвоение поверхности `doctor` ради
-  легаси-линии. Первые два пункта верны — расхождения перечислены ниже, — а вывод нет. Роутеры
-  живут на релизе годами; мейнтейнер, шипающий только apk, бросил всех, кто ещё не обновился, и
-  это не «легаси», а большинство установленной базы.
-
-  Удвоения поверхности не случилось: `internal/feedindex` читает оба индекса в одну форму, и
-  проверки — один код, а не две расходящиеся копии. Что **не** общее, сказано явно, потому что
-  иначе абстракция врала бы:
-
-  | | 25.12 (apk) | 24.10 (opkg) |
-  |---|---|---|
-  | индекс | бинарный `packages.adb` | текстовый `Packages` + `Packages.gz` |
-  | подпись покрывает | сам индекс | **несжатый** `Packages` |
-  | схема | EC prime256v1 | usign / ed25519 |
-  | строка репозитория | URL **файла** индекса | URL **каталога** |
-  | ключ на устройстве | `/etc/apk/keys/<любое имя>.pem` | `/etc/opkg/keys/<id ключа>` |
-  | подпись пакета | есть | **нет** — доверие только на индексе |
-  | «любая арка» | `noarch` | `all` |
-
-  Фид, обслуживающий обе линии, подписывается двумя ключами: каждый менеджер проверяет только свою
-  схему. Конфиг отказывается принимать ipk-линию без `signing.usign-key`, чтобы это выяснялось не
-  от роутера.
-
-  Пакет объявляет `releases:`; пустое поле значит «обе». Проверено на настоящих роутерах через
-  [owlab](https://github.com/VizzleTF/owlab), по одному на менеджер.
-
-  Что из отложенного осталось отложенным: `doctor` для ipk не проверяет грамматику версий (у opkg
-  она своя), а `install-snippet` для 24.10 не выдаёт строку в `sysupgrade.conf` — переживают ли
-  `/etc/opkg/keys` и `customfeeds.conf` обновление прошивки, я не проверял и утверждать не буду.
-- **GitHub Releases как хост пакетов.** Ассеты 302-ят на `objects.githubusercontent.com`, apk
-  редиректы не тянет. Не обсуждается. Releases остаются полезны как *staging*-хоп между сборочными
-  репо и фид-репо (`collect --from gh-release:`).
-- **jsDelivr как рекомендуемое зеркало.** В Китае заблокирован сильнее, чем GitHub Pages (потерял
-  ICP-лицензию в декабре 2021) — каждый README, рекомендующий его «для Китая», говорит ровно
-  наоборот; плюс 20 МБ/файл, 12-часовой кэш веток и независимое кэширование `packages.adb` и `.apk`
-  (гарантированный skew). `doctor` активно предупреждает, если `feed.url` резолвится в jsDelivr.
-- **DSL для сборки пакетов.** Makefile остаётся Makefile'ом. `owfeed` оркестрирует, а не становится
-  вторым `package-pack.mk`.
-- **kmod'ы.** Привязаны к ABI ядра. Skip по умолчанию.
-- **Хостируемый сервис.** Инструмент обязан целиком запускаться мейнтейнером.
-
----
-
-## Риски — прототипировать до коммита в дизайн
-
-По убыванию того, сколько дизайна они инвалидируют.
-
-1. ~~**Принимает ли `apk mkndx` повторный `--sign-key`?**~~ **СНЯТ 2026-07-27: принимает.** Два блока
-   подписи в индексе, проверено на apk-tools 3.0.5. Основной путь ротации работает, фолбэки не нужны.
-   Побочная находка, ставшая гейтом: **`adbsign` выходит с кодом 0, когда провалился** и ничего не
-   меняет — проверять по содержимому артефакта, не по коду возврата. Детали и репро — `apk-behaviour.md`.
-2. **Действительно ли подпись каждого `.apk` чинит LuCI «Upload Package»?** Механизм выведен, не
-   наблюдён: `package-manager-call` глушит неизвестные флаги и потому не может передать
-   `--allow-untrusted` (luci#8482 открыт), следовательно доверенная подпись — недостающее звено.
-   Доказывать в контейнере с живым LuCI. Если ложно — `sign-packages` деградирует до «ручной
-   `apk add ./x.apk` не требует флага», всё ещё полезно, но заголовочное утверждение умирает.
-3. **Собирается ли apk-tools 3.0.5 под darwin?** Определяет, «работает одинаково на ноутбуке и в CI»
-   буквально или «одинаково, через контейнер, на macOS». Частично отвечено: **для SDK-пути на darwin
-   контейнер обязателен** — `.apk.bin` это Linux x86-64 ELF. Открытым остаётся только вопрос, можно ли
-   собрать apk-tools под darwin нативно и раздавать как релизный ассет.
-4. ~~**Переносимость распаковки хост-`apk` из SDK**~~ **СНЯТ 2026-07-27.** Форма подтверждена:
-   `bin/apk` — bash-обёртка, реальный бинарь `.apk.bin`, запуск через бандленный `ld-linux` с
-   `--library-path`. Но весь `staging_dir/host/lib` тащить **не надо**: транзитивное замыкание
-   `DT_NEEDED` — три библиотеки на 2.1 МБ, полный набор извлечения = **6 файлов, 3.9 МБ** вместо 143 МБ.
-   Вызов загрузчика напрямую снимает зависимость от bash, а бандленный libc — от libc хоста
-   (работает на musl-образе). Детали и репро — `apk-behaviour.md`.
-5. **`--pkgname-spec` с относительным `../noarch/…`** — нужен для `noarch.placement: shared`.
-   Базовый URL в режиме ndx — каталог `.adb`; резолвится ли `../`, не проверено. Дефолт остаётся fanout.
-6. **Семантика `mkndx --index`** (инкрементальный): удаляет ли пакеты, отсутствующие в аргументах,
-   или только добавляет? Полевых свидетельств нет — в OpenWrt этим никто не пользуется. Определяет,
-   уживаются ли GC и инкрементальность.
-7. **Поведение GitHub Pages с редиректами** на точных публикуемых URL: слэш в конце, apex→www на
-   своём домене, «Enforce HTTPS». И: реально ли артефактный деплой обходит лимит 1 ГБ, или лимит
-   на сайт независимо от истории.
-8. **Cloudflare R2 + свой домен:** есть ли 30x при каких-либо условиях; выставляется ли
-   `Cache-Control` по ключу (нужно `no-cache` на `packages.adb` и immutable на `*.apk`).
-9. **Ограничения mbedtls в 25.12** — точные версии TLS, шифронаборы, поведение построения цепочки.
-   Проверка 511 сейчас выведена из первых принципов и до прототипа отдаёт информационно всё, кроме
-   полноты цепочки.
-10. **Собственная supply chain `owfeed`.** Action скачивает наш бинарь. Релизные бинари несут
-    GitHub-аттестации, reusable workflow пинит загрузку по digest, `owfeed --version` печатает свой digest.
-
-*Риск «доступность имени» снят: проверено 2026-07-27, `owfeed` свободен на GitHub и npm.*
-
----
-
-## Верификация
-
-Проект сам себе главный тест-кейс. Порядок приёмки v0.1:
-
-1. `go test ./...` — юнит-тесты на грамматику версий, санитизацию `--info`, вывод арок из
-   зафиксированного `.overview.json`, парсинг конфига (строгие неизвестные ключи), разбор SEC1 vs PKCS#8,
-   нативную проверку usign против известной пары подпись/ключ.
-2. `owfeed init && owfeed keygen && owfeed build && owfeed index && owfeed doctor --offline`
-   в отдельном каталоге на реальном `luci-theme-footstrap` — должен выдать подписанный `packages.adb`
-   и зелёный doctor.
-3. Сверка байт-в-байт: `owfeed index` и ручная последовательность из `--print-commands` дают
-   идентичный `packages.adb` (при фиксированном `SOURCE_DATE_EPOCH`).
-4. `owfeed publish --target github-pages --dry-run`, затем реальная публикация в тестовый репо,
-   затем `owfeed verify --url <live>` — 510/512/513/520 зелёные.
-5. `owfeed smoke --release 25.12` в `openwrt/rootfs:x86-64-25.12.x`: `apk update` и `apk add`
-   **без** `--allow-untrusted` проходят; 601a/601b/602 дают ожидаемые вердикты.
-6. Негативные тесты — каждый должен упасть с правильным кодом выхода и правильным ID:
-   индекс с `-C zstd` (401, exit 5), PKCS#8-ключ (301, exit 4), `arch: all` (201, exit 7),
-   версия `1.0~beta` (202), описание в 600 байт (203), фид за редиректом (510),
-   подмена байт уже опубликованного `.apk` (513), README, разошедшийся со сниппетом (701).
+State lives in exactly three places, deliberately: `owfeed.yml` is human intent,
+`owfeed.lock` is derived fact under review, and the published tree is the database.
+There is no local database and no `gh-pages` branch accumulating binaries — one
+existing feed's repository reached 2.6 GB against a 1 GB Pages limit, all of it git
+history.
+
+**Go, for three reasons.** One artifact, so a 35-job matrix pays no `docker pull` or
+`pip install` per job. `crypto/ed25519` verifies usign natively in about thirty
+lines, which removes bootstrapping a C `usign` build from every consumer's critical
+path. And redirect and TLS-chain inspection — `CheckRedirect` with
+`ErrUseLastResponse`, chain validation *without* following AIA the way mbedtls does
+not — are product features here, not plumbing, and are not writable in shell.
+
+## The facts it is built on
+
+Established by reading apk-tools 3.0.5 and the `openwrt-25.12` branch, then confirmed
+by running them. The full table is in [apk-behaviour.md](apk-behaviour.md); these are
+the ones that shaped the design.
+
+**Trust flows from the signed index, not from the package.** Installing from a repo
+verifies the package against a SHA-256 in an already-trusted `packages.adb`. A lone
+`.apk` is therefore always UNTRUSTED, and shipping bare `.apk` files condemns users
+to `--allow-untrusted` forever.
+
+**OpenWrt never signs individual packages, but `apk mkpkg --sign-key` works.** So
+owfeed signs each one. It is free, and it fixes `apk add ./file.apk` without a flag —
+and LuCI's "Upload Package", which physically cannot pass `--allow-untrusted` because
+`package-manager-call` swallows unknown flags. Nobody else does this.
+
+**`arch: all` is rejected; the value is `noarch`.** **After `~` only hex is legal**,
+because that position is a commit hash. **Never `-C zstd`**: OpenWrt builds apk with
+zstd disabled, so a zstd index parses on the build host and dies on every router.
+
+**apk does not follow redirects** with the stock `uclient-fetch`. That single fact
+rules out GitHub Releases as a package host, URL shorteners, apex-to-www, and
+http-to-https — and it is why `verify` treats any 30x as a hard failure.
+
+**`/etc/apk/keys/*.pem` do not survive sysupgrade.** This is the single largest cause
+of post-upgrade `UNTRUSTED signature` reports, and no existing feed emits the
+`/etc/sysupgrade.conf` line that prevents it. owfeed's install snippet does.
+
+**`apk add ./file.apk` writes an identity-hash pin into `/etc/apk/world`**, and the
+package then never updates from the repo again. So local installation never appears
+in user-facing documentation.
+
+## Decisions worth arguing about
+
+**noarch fans out rather than being shared.** The same `.apk` is copied into every
+architecture directory. It looks wasteful — 35 copies of a 50 KB theme — and the
+alternative is worse: in `ndx` mode a client reads exactly one index, so a shared
+noarch directory means a second line in `.list`, and because apk's wget backend
+ignores `If-Modified-Since`, that is a second full index download on every `apk
+update`, forever.
+
+**Architectures are derived, never hardcoded.** From `.overview.json`, pinned into
+`owfeed.lock`, with `--frozen-lock` the CI default. A renamed architecture is simply
+one that is no longer in the source; a new one arrives as a diff someone approves.
+The only hardcoded architecture knowledge is a three-entry rename table, and it exists
+so GC reports read sensibly rather than to make decisions.
+
+**Fail-closed everywhere.** A check that *cannot* run counts as failed, not skipped.
+An unknown config key is an error, not a warning. `publish` refuses an unsigned or
+unchecked tree and has no override flag. `--allow-untrusted` appears in exactly one
+place — `mkndx` over our own unsigned inputs — and never in text a user will read.
+
+**The tool argues against itself where it should.** A key in `/etc/apk/keys` is a
+trust anchor for *every* package name, so a compromised feed can offer a higher
+`dropbear` and win the resolution. For one package installed occasionally, signed
+release artifacts are a smaller ask — and `owfeed release` serves exactly that case.
+This is the third section of the README, not a footnote.
+
+## What was deliberately cut
+
+**GitHub Releases as a package host.** Assets 302 to `objects.githubusercontent.com`.
+Not negotiable. Releases remain useful as a staging hop between an author and a feed,
+which is what `owfeed release` is for.
+
+**jsDelivr as a recommended mirror.** It is blocked in China more thoroughly than
+GitHub Pages, so every README recommending it "for China" says the opposite of what it
+means; plus 20 MB per file and independent caching of the index and the packages,
+which is guaranteed skew.
+
+**A DSL for building packages.** A Makefile stays a Makefile. owfeed orchestrates; it
+does not become a second `package-pack.mk`.
+
+**kmods.** Tied to the kernel ABI. Skipped by default.
+
+## What was cut and came back
+
+The original plan deferred **ipk and the 24.10 line to v1.0**, on the grounds that a
+second index format and a second trust model nearly doubles the check surface for a
+legacy line.
+
+That was wrong, and the reason it was wrong is worth keeping: routers stay on a
+release for years, so serving only the newer line leaves most of the installed base
+where it is. Both lines now come out of one configuration, each with the signature
+scheme its package manager actually verifies — EC for apk, usign for opkg — and the
+extra surface turned out to be one index writer and one verifier.
+
+## What is still true and still uncomfortable
+
+**Attended sysupgrade will not carry third-party packages across.** `owut` forwards no
+custom repositories at all, and the ASU server's `repository_allow_list` is empty by
+default, which denies everything. owfeed says so in fixed text it never softens,
+rather than letting users find out from a failed upgrade.
+
+**apk has no revocation.** No CRL, no expiry, no way to say a key is dead. A
+compromised feed key plus control of the feed URL is a total compromise of every
+subscriber, with no recovery path for a device that is offline when you find out.
+owfeed mitigates — the key is absent from build jobs, publishing sits behind a
+protected environment, rotation is cheap enough to actually do — and does not claim
+the problem is solved.
