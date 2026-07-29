@@ -59,6 +59,11 @@ code,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .side a.here{color:var(--ink);background:var(--surface-2);
   box-shadow:inset 2px 0 0 var(--accent)}
 
+/* Sub-items under a section: the cookbook is one path in three stages, and a flat
+ * list would read as three unrelated pages. */
+.side li.sub a{padding-left:1.35rem;font-size:.85rem}
+.side li.sub a::before{content:"└ ";color:var(--ink-subtle);margin-left:-.75rem}
+
 .lang{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
   font-family:ui-monospace,monospace;font-size:.78rem;color:var(--ink-subtle)}
 .lang a{display:inline;padding:0;margin:0;color:var(--ink-subtle)}

@@ -2,6 +2,24 @@
 
 Dates are when the tag was cut. Anything not listed is documentation or tests.
 
+## v0.4.1 — 2026-07-29
+
+- **Fixed:** the keyring package was never produced by the feeds that need it most. It
+  was attached to `owfeed build`, and a feed carrying other people's work runs no build
+  at all — its packages arrive already built, and its pipeline is fetch, sign, index. So
+  the one feature whose whole purpose is reaching subscribers of such a feed was
+  unreachable there. It is built during `index` now, which every feed runs.
+
+  It is also signed with the feed's own key regardless of `sign-packages`. That setting
+  exists so a feed does not put its signature inside a file somebody else built; this
+  file is the feed's own, and mkndx refuses to index a package carrying no signature at
+  all. For the same reason it is exempt from `author-keys`: holding the feed's own
+  package to a rule about third-party authors would exclude the one package a feed
+  publishes about itself.
+
+  Found by looking at the published feed rather than at the test that passed — the
+  package simply was not there.
+
 ## v0.4.0 — 2026-07-29
 
 - **Added:** `signing.keyring-package` builds the package that carries a feed's public

@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Develop and test — owfeed cookbook</title>
+<meta name="description" content="Run your OpenWrt package on throwaway routers while you work on it: owlab up, sync on save, and one command that starts, installs, asserts and tears down.">
+<link rel="canonical" href="https://owfeed.org/cookbook/develop/">
+<link rel="alternate" hreflang="en" href="https://owfeed.org/cookbook/develop/">
+<link rel="alternate" hreflang="ru" href="https://owfeed.org/cookbook/develop/ru/">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<div class="shell">
+
+<aside class="side">
+<a class="brand" href="/"><b>owfeed</b>.org</a>
+<p class="tagline">Signed package feeds for OpenWrt, on both release lines.</p>
+<nav>
+<h3>Start</h3>
+<ul>
+  <li><a href="/">Overview</a></li>
+  <li><a href="/install/">Install a package</a></li>
+</ul>
+<h3>Publish</h3>
+<ul>
+  <li><a href="/cookbook/">Ship your package</a></li>
+  <li class="sub"><a href="/cookbook/develop/" class="here">Develop and test</a></li>
+  <li class="sub"><a href="/cookbook/release/">Build and release</a></li>
+  <li class="sub"><a href="/cookbook/feed/">Get into a feed</a></li>
+  <li><a href="/reference/">Commands and config</a></li>
+  <li><a href="/problems/">When something breaks</a></li>
+</ul>
+<h3>Source</h3>
+<ul class="source">
+  <li><a href="https://github.com/owfeed/owlab">owlab</a></li>
+  <li><a href="https://github.com/owfeed/owfeed">owfeed</a></li>
+  <li><a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a></li>
+  <li><a href="/legal/">Legal and privacy</a></li>
+</ul>
+<p class="lang"><span class="here">EN</span> · <a href="/cookbook/develop/ru/">RU</a></p>
+</nav>
+</aside>
+
+<main class="page">
+
+<p class="kicker">Cookbook · 1 of 3</p>
+<h1>Develop and test</h1>
+<p class="lead">Throwaway OpenWrt routers in Docker, so you can see your package running before
+anyone else does. You need Docker and nothing else.</p>
+
+<h2>Start a router</h2>
+
+<pre>go install owfeed.org/owlab/cmd/owlab@latest
+
+cd my-luci-app
+owlab up                  # start it
+owlab open owrt2512       # LuCI in your browser</pre>
+
+<p>Log in as <code>root</code> with an empty password. The router is disposable — break it, then
+<code>owlab up --rebuild</code>.</p>
+
+<h2>See your changes without rebuilding</h2>
+
+<pre>owlab sync --watch</pre>
+
+<p>Copies your sources into the running router on every save and reloads LuCI. This is the loop
+you spend the day in; building a package is for later.</p>
+
+<p>owlab copies the same directories <code>luci.mk</code> installs — <code>htdocs</code>,
+<code>ucode</code>, <code>luasrc</code>, <code>root</code>. If your package lives in a
+subdirectory, say so:</p>
+
+<pre>project:
+  install:
+    my-package/htdocs: /www
+    my-package/ucode:  /usr/share/ucode/luci
+    my-package/root:   /</pre>
+
+<h2>Cover both release lines</h2>
+
+<pre>version: 1
+routers:
+  - id: owrt2512
+    release: "25.12.5"
+  - id: owrt2410
+    release: "24.10.8"</pre>
+
+<p>25.12 uses apk, 24.10 uses opkg, and they agree on almost nothing. A package that works on one
+can fail on the other, so both are worth having open.</p>
+
+<div class="note"><strong>Pin exact point releases.</strong> <code>snapshot</code> images and
+<code>snapshot</code> feeds are rebuilt daily and independently, so installs start failing within
+a day. <code>owlab releases</code> tells you when a pin has fallen behind.</div>
+
+<h2>Make the router look inhabited</h2>
+
+<p>An empty router renders almost nothing — no zone badges, no VLANs, no DHCP leases, no tables
+with rows in them. That is a poor place to develop a page against:</p>
+
+<pre>defaults:
+  fixtures: [all]</pre>
+
+<p>Individual profiles: <code>networks</code>, <code>clients</code>, <code>wireguard</code>,
+<code>portforwards</code>, <code>system</code>, <code>wifi</code>.</p>
+
+<h2>The whole check in one command</h2>
+
+<pre>owlab test --release 25.12.5 --release 24.10.8 \
+  --install 'dist/*/luci-app-mine-*' \
+  --assert 'http 200 /cgi-bin/luci/admin/services/mine' \
+  --assert 'service mined'</pre>
+
+<p>Starts the routers, installs, asserts, tears down, exits 0 or 1. This is what CI runs, and
+running it locally first is how you find out before the pull request does.</p>
+
+<p>Two things it does that a hand-written <code>curl</code> does not. It <strong>logs into LuCI
+first</strong>, because every admin page answers a redirect otherwise — which is why the obvious
+check reports 403 on a perfectly healthy page. And it <strong>fails a 200 whose body is an error
+page</strong>: LuCI's dispatcher returns 200 with the traceback in it when it catches an
+exception.</p>
+
+<p>Full list of assertion kinds: <a href="/reference/">Commands and config</a>.</p>
+
+<h2>When a kernel module is involved</h2>
+
+<pre>routers:
+  - id: real
+    fidelity: vm
+    release: "25.12.5"
+    packages: ["+kmod-nft-nat"]</pre>
+
+<p>A container shares the host kernel, so <code>kmod-*</code> packages install and do nothing.
+<code>fidelity: vm</code> is QEMU with OpenWrt's own kernel — first start takes about a minute and
+a half, after that twenty seconds. It also gets simulated radios, so the wireless pages show a
+router instead of a config file.</p>
+
+<footer>
+<p>Next: <a href="/cookbook/release/">Build and release</a> — turning what works into signed
+artifacts.</p>
+<p><a href="/legal/">Disclaimer and privacy</a></p>
+</footer>
+
+</main>
+</div>
+</body>
+</html>

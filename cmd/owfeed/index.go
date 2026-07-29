@@ -13,10 +13,13 @@ import (
 	"owfeed.org/owfeed/internal/apk"
 
 	"owfeed.org/owfeed/internal/badge"
+	"owfeed.org/owfeed/internal/build"
 	"owfeed.org/owfeed/internal/config"
 	"owfeed.org/owfeed/internal/feedindex"
 	"owfeed.org/owfeed/internal/index"
+	"owfeed.org/owfeed/internal/keyring"
 	"owfeed.org/owfeed/internal/keys"
+	"owfeed.org/owfeed/internal/lock"
 )
 
 const defaultOut = "out"
@@ -91,6 +94,19 @@ func (a *app) index(ctx context.Context, args []string) error {
 	tool, err := a.tool(ctx, l)
 	if err != nil {
 		return err
+	}
+
+	// The keyring package is built HERE rather than in `owfeed build`, and that is not
+	// tidiness. A feed that carries other people's work runs no build at all — its
+	// packages arrive already built, and its pipeline is fetch, sign, index — so a
+	// keyring attached to the build step would never be produced by exactly the feeds
+	// that need rotation most. Indexing is the one step every feed runs.
+	if *c.Signing.KeyringPackage {
+		cleanup, err := a.buildKeyring(ctx, c, l, dist)
+		if err != nil {
+			return err
+		}
+		defer cleanup()
 	}
 
 	tree, err := index.Tree(dist)
@@ -182,7 +198,10 @@ func (a *app) index(ctx context.Context, args []string) error {
 					// publish", and a feed once shipped one package of three and
 					// reported itself healthy. Hence the name on stdout and the
 					// count in the summary, not a debug line.
-					if len(authorKeys) > 0 {
+					// The keyring package is the feed's own and is signed by the
+					// feed. Holding it to the author rule would exclude the one
+					// package a feed publishes about itself.
+					if len(authorKeys) > 0 && !strings.HasPrefix(p, keyring.NameFor(c.Feed.Name)+"-") {
 						ok, err := signedByAuthor(ctx, tool, filepath.Join(dist, src), p, authorKeys)
 						if err != nil {
 							return wrap(exitIndex, err)
@@ -381,4 +400,96 @@ func writeExclusions(out string, skipped map[string]bool) error {
 		fmt.Fprintf(&b, "%s\n", n)
 	}
 	return os.WriteFile(path, []byte(b.String()), 0o644)
+}
+
+// stageKeyring writes the keyring package's payload and builds it.
+//
+// Staged rather than committed: the payload is one file derived from the signing key,
+// so keeping a copy in the repository would be a second place for it to be wrong.
+func (a *app) buildKeyring(ctx context.Context, c *config.Config, l *lock.Lock, dist string) (func(), error) {
+	noop := func() {}
+	key, err := a.signingKey(c)
+	if err != nil {
+		return noop, err
+	}
+	// The version comes from the lockfile, which is where a rotation is recorded and
+	// reviewed. Inventing one per run gives a number that either never moves or moves
+	// for no reason.
+	if l.Keyring == nil {
+		return noop, fail(exitConflict,
+			"signing.keyring-package is on but %s records no keyring version; run `owfeed lock --update`",
+			a.lockPath())
+	}
+	id, err := keys.IdentityOf(&key.PublicKey)
+	if err != nil {
+		return noop, wrap(exitKey, err)
+	}
+	// A key that disagrees with the record is a rotation nobody wrote down. Building
+	// anyway would publish the new key under the old version, which every router
+	// declines as an upgrade it already has.
+	if l.Keyring.Identity != id.String() {
+		return noop, fail(exitConflict,
+			"the signing key is %s but %s records %s for the keyring package\n"+
+				"  run `owfeed lock --update` and commit the diff: a rotation is a fact worth seeing",
+			id, a.lockPath(), l.Keyring.Identity)
+	}
+
+	// Beside the config rather than in TMPDIR: `files:` resolves against the config's
+	// directory, and on macOS the system temp directory is on another volume, where a
+	// relative path to it cannot be formed at all.
+	const stageDir = ".owfeed-keyring"
+	dir := filepath.Join(a.root(), stageDir)
+	if err := os.RemoveAll(dir); err != nil {
+		return noop, wrap(exitIndex, err)
+	}
+	cleanup := func() { os.RemoveAll(dir) }
+
+	if _, err := keyring.Stage(dir, &key.PublicKey); err != nil {
+		cleanup()
+		return noop, wrap(exitIndex, err)
+	}
+	kp, err := keyring.Package(c.Feed, l.Keyring.Version, stageDir)
+	if err != nil {
+		cleanup()
+		return noop, wrap(exitIndex, err)
+	}
+
+	// Into dist/, where every other package already is, so the rest of indexing does
+	// not have to know this one exists.
+	tool, err := a.tool(ctx, l)
+	if err != nil {
+		cleanup()
+		return noop, err
+	}
+	res, err := build.Build(ctx, tool, build.Request{
+		Package: kp, Feed: c.Feed, Root: a.root(),
+		Version: l.Keyring.Version, Arch: config.Noarch,
+		OutDir: dist, Format: config.FormatAPK,
+	})
+	if err != nil {
+		cleanup()
+		return noop, wrap(exitIndex, err)
+	}
+	// Signed here, with the feed's own key, whatever signing.sign-packages says. That
+	// setting exists so a feed does not put its signature inside a file somebody else
+	// built; this file is the feed's own, and mkndx will not index a package carrying
+	// no signature at all.
+	keyDir, cleanupKey, err := a.stageKey(key)
+	if err != nil {
+		cleanup()
+		return noop, err
+	}
+	defer cleanupKey()
+	signer, err := index.NewSigner(keyDir, keyFileName, key)
+	if err != nil {
+		cleanup()
+		return noop, wrap(exitKey, err)
+	}
+	if _, err := index.Sign(ctx, tool, filepath.Dir(res.File), signer); err != nil {
+		cleanup()
+		return noop, wrap(exitKey, err)
+	}
+
+	a.logf("built %s (keyring, key %s)", rel(res.File), id)
+	return cleanup, nil
 }
