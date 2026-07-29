@@ -2,6 +2,30 @@
 
 Dates are when the tag was cut. Anything not listed is documentation or tests.
 
+## v0.3.3 — 2026-07-29
+
+- **Added:** `signing.author-keys` — a directory of pinned author public keys. Every
+  package must then carry a signature by one of them, and `owfeed doctor
+  --author-keys DIR` checks a tree by hand.
+
+  For a feed that carries other people's work this is the only claim that survives the
+  feed itself. The index proves that this feed published a file; an author signature
+  proves who built it, and can be checked by somebody who does not trust the feed at
+  all. The pinned copy is the source of truth: a key travelling beside a release proves
+  nothing on its own, since whoever replaced the package would replace the key too.
+
+- **Changed:** a package with no author signature is left out of the index rather than
+  failing the whole tree. One author who has not adopted signing yet used to cost every
+  other author their publication.
+
+  It is left out loudly. The name goes to stdout as it happens, the count into the
+  summary, and a record beside the tree. That record keeps OWF406 working — a package
+  that vanished because a build half-failed is still an error, where one deliberately
+  excluded is OWF407, a warning naming the subscribers who have silently stopped
+  receiving updates. Tolerating the second without recording it would have meant giving
+  up the first, and a feed publishing one package of three while reporting itself
+  healthy is a failure this ecosystem has already had.
+
 ## v0.3.2 — 2026-07-29
 
 - **Fixed:** the releases badge named only the apk line. Badge data was collected in
