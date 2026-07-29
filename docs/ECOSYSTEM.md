@@ -249,6 +249,14 @@ it is written down here because the gate depends on it:
 > **A workflow that can see an author's key and a feed's key at the same time is a bug.**
 > No legitimate scenario produces one.
 
+A feed's keys belong in an environment rather than in repository secrets, and the reusable
+workflow can still reach them: a called job that declares `environment:` resolves that
+environment against the **caller's** repository, and the caller's environment-scoped
+secrets are readable inside it. That is measured rather than inferred — the documentation
+states that the environment's secret wins over a passed-in one and never says whose
+environment — and it is what keeps a feed's signing key out of reach of every other
+workflow in the feed's own repository.
+
 **An author's signature is never stripped.** apk signature blocks are additive: the package
 a router installs carries the author's signature and the feed's. A subscriber who adds the
 author's key verifies the author directly; a subscriber who trusts only the feed is

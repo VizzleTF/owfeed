@@ -31,6 +31,8 @@ feed, or released binaries — not by reading the code.
 | Schema published and generated | `owfeed.org/schema/v1.json` is byte-identical to the checked-in copy; the drift test fails when a field is added and the annotation guard fails when a key is renamed |
 | `owfeed releases` against owlab | Both answer 25.12→25.12.5/apk and 24.10→24.10.8/ipk today; the nightly job ran green on a runner, and reports a disagreement when either answer is perturbed |
 | `feed.yml` in `dry-run` mode | owfeed-packages ran it end to end: build with no key, throwaway keys, sign, index, check-tree, doctor, smoke on both lines, a tree digest, publish job skipped |
+| `feed.yml` publishing | owfeed-packages publishes through it now. Signed with the `feed` environment's own keys, gated, deployed, and the live feed still serves three packages on both lines |
+| A called job's `environment:` resolves against the **caller** | Probed: an environment variable set to a different value in each repository returned the caller's, and the caller's environment-scoped signing secrets reached the called job at their real lengths |
 
 ## Built but not yet exercised in anger
 
@@ -40,23 +42,8 @@ feed, or released binaries — not by reading the code.
   demand `install.sh.sig` and fail loudly if it is missing.
 - **The intake funnel** answers correctly when run by hand. No third party has used
   it yet, so the first genuine request is still the first genuine test.
-- **`feed.yml`'s `published` and `page-url` outputs.** `digest` is confirmed; the
-  other two only ever have a value on the publish path, which nothing calls yet.
-- **Reading the signing key from the environment** in `feed.yml`'s publish job.
-  GitHub's documentation is explicit that a called job declaring `environment:`
-  uses that environment's secret rather than a passed-in one, and the job now
-  reads `secrets.OWFEED_SIGN_KEY` with the `sign-key` input as fallback — so an
-  existing caller is unaffected either way. What one live run still has to settle
-  is *whose* environment resolves, the caller's or owfeed's, since the run belongs
-  to the caller and no such environment exists in owfeed. Nothing calls the publish
-  half yet: `owfeed-packages` moved its pull-request check across and kept its
-  hand-written `publish.yml`, so the question gets answered by a deliberate run
-  rather than by a feed that stopped publishing.
-
-  The check half being green is not evidence either way — it holds no secret and
-  declares no environment. What the first run of it did prove is the value of
-  running one: two defects in v0.1.6 that no amount of reading had found, both
-  fixed in v0.1.7.
+- **`feed.yml`'s `published` and `page-url` outputs.** Both now have a value on
+  every publish; nothing reads them yet, which is the part still untested.
 
 ## Not built, and why
 

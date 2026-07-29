@@ -142,9 +142,11 @@ on:
     outputs:
       digest:
         description: >-
-          sha256 over the published tree -- every file's content and path. Two runs
-          that agree here published the same feed, which is the question a caller
-          asks when deciding whether anything actually changed.
+          sha256 over the tree -- every file's content and path. Comparable between
+          two runs of the SAME mode and never across modes: a dry run signs with a
+          key it generated seconds earlier, so its signatures, and therefore its
+          digest, differ from a publish of byte-identical packages. Two publishes
+          that agree here published the same feed.
         value: ${{ jobs.publish.outputs.digest || jobs.check.outputs.digest }}
       published:
         description: >-
