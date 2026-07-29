@@ -2,6 +2,15 @@
 
 Dates are when the tag was cut. Anything not listed is documentation or tests.
 
+## v0.4.5 — 2026-07-29
+
+- **Fixed:** the install instructions claimed a stock image cannot fetch over HTTPS until
+  `ca-bundle` and `libustream-mbedtls` are installed. Both ship in the stock 25.12 and
+  24.10 images — checked against the manifests for x86/64 and for ath79 generic, which is
+  where a small-flash image would have dropped them. The line stays, because a custom or
+  stripped build can lack them and then nothing else can be fetched at all, but it no
+  longer says something untrue about the common case.
+
 ## v0.4.4 — 2026-07-29
 
 - **Fixed:** `doctor` failed a feed on its own keyring package. OWF304 requires a

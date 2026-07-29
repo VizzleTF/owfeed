@@ -78,7 +78,12 @@ func shellAPK(in Input) string {
 		expand(in.Config.Layout.Path, release, "$(cat /etc/apk/arch)"))
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "# HTTPS on a stock image needs these two first.\n")
+	// Stock 25.12 and 24.10 images already carry these -- checked against the
+	// manifests for x86/64 and for ath79 generic, which is where a small-flash image
+	// would have dropped them. Kept because a custom or stripped build can lack them,
+	// and then nothing below can be fetched at all; where they are present it is a
+	// no-op.
+	fmt.Fprintf(&b, "# HTTPS needs these. Stock images have them; custom builds may not.\n")
 	fmt.Fprintf(&b, "apk add ca-bundle libustream-mbedtls\n\n")
 	fmt.Fprintf(&b, "wget %s/%s.pem -O %s\n", base, f.Name, keyPath)
 	fmt.Fprintf(&b, "echo \"%s\" > %s\n\n", repoLine, listPath)
@@ -172,7 +177,7 @@ func Script(in Input) string {
 	p("\t# compiled with, which is not always what the image uses.")
 	p("\tarch=$(cat /etc/apk/arch)")
 	p("")
-	p("\t# A stock image cannot fetch over HTTPS until these are installed.")
+	p("\t# HTTPS needs these. Stock images have them; custom builds may not.")
 	p("\tapk add ca-bundle libustream-mbedtls")
 	p("\twget -qO %s %s/%s.pem", keyPath, base, f.Name)
 	p("\techo \"%s\" > %s", apkRepo, listPath)
