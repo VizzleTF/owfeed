@@ -6,6 +6,11 @@ jobs:
     runs-on: ubuntu-latest
     environment: feed
     steps:
-      - run: |
-          echo "PROBE_RESULT=[${{ vars.PROBE }}]"
-          echo "repository=${{ github.repository }}"
+      - env:
+          K: ${{ secrets.OWFEED_SIGN_KEY }}
+          U: ${{ secrets.OWFEED_USIGN_KEY }}
+        run: |
+          echo "var:    [${{ vars.PROBE }}]"
+          echo "repo:   ${{ github.repository }}"
+          echo "signkey length: ${#K}"
+          echo "usignkey length: ${#U}"
