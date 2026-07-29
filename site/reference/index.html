@@ -105,7 +105,7 @@ writes a report to stdout.</p>
 <tr><td><code>owfeed build</code></td><td>Package every configured package into <code>dist/&lt;arch&gt;/</code>. Does not compile.</td></tr>
 <tr><td><code>owfeed sign</code></td><td>Add a signature inside each package.</td></tr>
 <tr><td><code>owfeed index</code></td><td>Fan the packages out per architecture and write a signed index in each.</td></tr>
-<tr><td><code>owfeed doctor</code></td><td>Check the built tree. <code>--require-origin</code> demands every package name its source repository.</td></tr>
+<tr><td><code>owfeed doctor</code></td><td>Check the built tree. <code>--require-origin</code> demands every package name its source repository; <code>--author-keys DIR</code> demands every package carry a signature by a key pinned in DIR.</td></tr>
 <tr><td><code>owfeed smoke</code></td><td>Install the built feed on a real OpenWrt image. <code>--release 24.10</code> for the older line.</td></tr>
 <tr><td><code>owfeed verify</code></td><td>Check the published feed from outside, over its documented URL.</td></tr>
 <tr><td><code>owfeed publish</code></td><td>Gate the tree on those checks and hand it to the target. No override flag.</td></tr>
@@ -174,6 +174,7 @@ signing:
   key: env:OWFEED_SIGN_KEY    # EC prime256v1, signs apk indexes and packages
   usign-key: env:OWFEED_USIGN_KEY   # usign, signs opkg indexes
   sign-packages: true         # false: sign only the index, not other people's files
+  author-keys: ./keys         # every package must be signed by a key pinned here
 
 publish:
   - target: github-pages

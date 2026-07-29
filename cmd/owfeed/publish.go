@@ -52,7 +52,7 @@ func (a *app) publish(ctx context.Context, args []string) error {
 
 	// The same input the `doctor` command builds. Assembling it separately here is
 	// exactly how an ipk index once reached publication unverified.
-	in, err := a.doctorInput(ctx, c, l, out, requireOriginFor(c))
+	in, err := a.doctorInput(ctx, c, l, out, requireOriginFor(c), "")
 	if err != nil {
 		return err
 	}

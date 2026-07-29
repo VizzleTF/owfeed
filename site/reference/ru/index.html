@@ -105,7 +105,7 @@
 <tr><td><code>owfeed build</code></td><td>Упаковать все пакеты из конфига в <code>dist/&lt;arch&gt;/</code>. Не компилирует.</td></tr>
 <tr><td><code>owfeed sign</code></td><td>Положить подпись внутрь каждого пакета.</td></tr>
 <tr><td><code>owfeed index</code></td><td>Разложить пакеты по архитектурам и написать в каждой подписанный индекс.</td></tr>
-<tr><td><code>owfeed doctor</code></td><td>Проверить собранное дерево. <code>--require-origin</code> требует, чтобы каждый пакет называл свой репозиторий.</td></tr>
+<tr><td><code>owfeed doctor</code></td><td>Проверить собранное дерево. <code>--require-origin</code> требует, чтобы каждый пакет называл свой репозиторий; <code>--author-keys DIR</code> — чтобы каждый нёс подпись ключом, зафиксированным в DIR.</td></tr>
 <tr><td><code>owfeed smoke</code></td><td>Поставить собранный фид на живой образ OpenWrt. <code>--release 24.10</code> для старой линии.</td></tr>
 <tr><td><code>owfeed verify</code></td><td>Проверить опубликованный фид снаружи, по его же документированному URL.</td></tr>
 <tr><td><code>owfeed publish</code></td><td>Пропустить дерево через проверки и отдать цели публикации. Флага «всё равно опубликовать» нет.</td></tr>
@@ -175,6 +175,7 @@ signing:
   key: env:OWFEED_SIGN_KEY    # EC prime256v1, подписывает индексы и пакеты apk
   usign-key: env:OWFEED_USIGN_KEY   # usign, подписывает индексы opkg
   sign-packages: true         # false: подписывать только индекс, не чужие файлы
+  author-keys: ./keys         # каждый пакет обязан быть подписан ключом отсюда
 
 packages:
   - name: luci-app-mine

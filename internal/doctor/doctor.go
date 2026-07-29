@@ -130,6 +130,21 @@ type Input struct {
 	// other people's does, because the URL in the installed package is the only
 	// thing telling a user who to go to when it misbehaves.
 	RequireOrigin bool
+	// AuthorKeys are the identities a package is allowed to be signed by, keyed by
+	// the file each was read from so a finding can name it.
+	//
+	// Set from --author-keys, and only meaningful for a feed that carries other
+	// people's work. What it buys is a claim that survives the feed: a package
+	// signed by its author can be checked by anyone, at any time, against a key
+	// they obtained elsewhere — where a package whose only provenance is the feed's
+	// index can be checked only against the feed, and therefore proves nothing
+	// about the feed itself.
+	//
+	// The pinned key is the source of truth. A key that travels beside a release
+	// proves nothing on its own, because whoever replaced the package would replace
+	// it too; its value is that it can disagree with the pin, which is how a
+	// rotated or substituted signing key is noticed.
+	AuthorKeys map[string]keys.Identity
 }
 
 // Run executes every check.
@@ -587,16 +602,44 @@ func checkIndexDir(ctx context.Context, r *Report, in Input, dir string, arches 
 	if idx.Format != feedindex.APK {
 		return nil
 	}
-	// A feed that deliberately leaves packages as their authors built them has
-	// nothing here to find. The claim it makes is about the index, which 4xx
-	// checks, and the absence of its own signature inside somebody else's file is
-	// the point rather than a defect.
-	if in.Config != nil && in.Config.Signing.SignPackages != nil && !*in.Config.Signing.SignPackages {
-		return nil
-	}
 	pkgs, err := index.Packages(dir)
 	if err != nil {
 		return err
+	}
+
+	// 304: signed by an author whose key this feed pinned.
+	//
+	// A feed that does not sign packages itself has nothing of its own inside them,
+	// so this is the only thing that ties a published file to whoever built it —
+	// and unlike the index, it can be checked by somebody who does not trust the
+	// feed. Without it, "the author is responsible for this package" is a claim
+	// with no way to test it.
+	if len(in.AuthorKeys) > 0 {
+		for _, p := range pkgs {
+			r.Checked++
+			ids, err := index.Signatures(ctx, in.Tool, dir, p)
+			if err != nil {
+				return err
+			}
+			if matchesAny(ids, in.AuthorKeys) {
+				continue
+			}
+			r.add(Finding{
+				ID: "OWF304", Severity: Error, Where: where + "/" + p,
+				What: fmt.Sprintf("carries no signature by a pinned author key (signatures: %s)", join(ids)),
+				Why: "the feed's index proves only that this feed published the file. An author signature is what a " +
+					"subscriber can check without trusting the feed, and what makes the author answerable for what is inside",
+				Fix: "have the author run `owfeed sign` in their own CI before publishing the release, and pin the public half",
+			})
+		}
+	}
+
+	// A feed that deliberately leaves packages as their authors built them adds
+	// nothing of its own, so 303 has nothing to find. The claim it makes is about
+	// the index, which 4xx checks, and the absence of its signature inside somebody
+	// else's file is the point rather than a defect.
+	if in.Config != nil && in.Config.Signing.SignPackages != nil && !*in.Config.Signing.SignPackages {
+		return nil
 	}
 	for _, p := range pkgs {
 		r.Checked++
@@ -695,6 +738,23 @@ func indexDirs(out string) ([]string, error) {
 	}
 	sort.Strings(dirs)
 	return dirs, nil
+}
+
+// matchesAny reports whether any signature on a package was made by one of the
+// pinned author keys.
+//
+// Any, not all: apk signature blocks are additive, so a package legitimately carries
+// the author's signature and possibly others. What matters is that the author's is
+// among them.
+func matchesAny(ids []string, allowed map[string]keys.Identity) bool {
+	for _, id := range ids {
+		for _, want := range allowed {
+			if id == want.String() {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func containsID(ids []string, want keys.Identity) bool {

@@ -4,6 +4,9 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"owfeed.org/owfeed/internal/apk"
 	"owfeed.org/owfeed/internal/config"
@@ -19,6 +22,7 @@ func (a *app) doctor(ctx context.Context, args []string) error {
 	fs.SetOutput(a.err)
 	failOn := fs.String("fail-on", "error", "lowest severity that fails the run: warn or error")
 	requireOrigin := fs.Bool("require-origin", false, "every package must say which repository it comes from")
+	authorKeys := fs.String("author-keys", "", "directory of pinned author public keys; every package must be signed by one of them")
 	if err := fs.Parse(args); err != nil {
 		return wrap(exitConfig, err)
 	}
@@ -46,7 +50,7 @@ func (a *app) doctor(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	in, err := a.doctorInput(ctx, c, l, out, *requireOrigin)
+	in, err := a.doctorInput(ctx, c, l, out, *requireOrigin, *authorKeys)
 	if err != nil {
 		return err
 	}
@@ -85,7 +89,7 @@ func usesFormat(c *config.Config, format string) bool {
 // doctorInput assembles what the checks look at. Both `doctor` and `publish` run
 // them, and building the input twice is how the ipk half of a feed came to be
 // published without its index ever being verified.
-func (a *app) doctorInput(ctx context.Context, c *config.Config, l *lock.Lock, out string, requireOrigin bool) (doctor.Input, error) {
+func (a *app) doctorInput(ctx context.Context, c *config.Config, l *lock.Lock, out string, requireOrigin bool, authorKeyDir string) (doctor.Input, error) {
 	// The apk toolchain is only needed to read an apk index. A feed that publishes
 	// only for 24.10 should not have to download an SDK to be checked.
 	var tool *apk.Tool
@@ -107,6 +111,15 @@ func (a *app) doctorInput(ctx context.Context, c *config.Config, l *lock.Lock, o
 		}
 	}
 
+	// The config is the policy; the flag is for checking a tree by hand.
+	if authorKeyDir == "" && c.Signing.AuthorKeys != "" {
+		authorKeyDir = filepath.Join(a.root(), c.Signing.AuthorKeys)
+	}
+	author, err := loadAuthorKeys(authorKeyDir)
+	if err != nil {
+		return doctor.Input{}, err
+	}
+
 	key, err := a.signingKey(c)
 	if err != nil {
 		return doctor.Input{}, err
@@ -126,5 +139,49 @@ func (a *app) doctorInput(ctx context.Context, c *config.Config, l *lock.Lock, o
 		PubKeyName:    c.Feed.Name + ".pem",
 		UsignKey:      usignPub,
 		RequireOrigin: requireOrigin,
+		AuthorKeys:    author,
 	}, nil
+}
+
+// loadAuthorKeys reads the pinned public keys a package may be signed by.
+//
+// The directory is the source of truth, and it is the one thing in a feed that a
+// person has to have looked at: a key added here is the whole of the decision to
+// carry somebody's work. A key that arrives beside a release proves nothing by
+// itself — whoever replaced the package would replace it too — so it is only ever
+// compared against what is pinned here.
+func loadAuthorKeys(dir string) (map[string]keys.Identity, error) {
+	if dir == "" {
+		return nil, nil
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fail(exitConfig, "--author-keys %s: %v", dir, err)
+	}
+	out := map[string]keys.Identity{}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".pem") {
+			continue
+		}
+		path := filepath.Join(dir, e.Name())
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return nil, wrap(exitKey, err)
+		}
+		pub, err := keys.LoadPublic(b)
+		if err != nil {
+			return nil, fail(exitKey, "%s: %v", path, err)
+		}
+		id, err := keys.IdentityOf(pub)
+		if err != nil {
+			return nil, fail(exitKey, "%s: %v", path, err)
+		}
+		out[e.Name()] = id
+	}
+	// An empty directory is a configuration mistake rather than a feed with no
+	// authors: the flag was passed, so something was expected to be in it.
+	if len(out) == 0 {
+		return nil, fail(exitConfig, "--author-keys %s holds no .pem files", dir)
+	}
+	return out, nil
 }

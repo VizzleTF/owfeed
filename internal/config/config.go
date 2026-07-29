@@ -154,6 +154,20 @@ type Signing struct {
 	// apk verifies EC prime256v1, so a feed serving both release lines signs each
 	// with the scheme its package manager understands.
 	UsignKey string `yaml:"usign-key"`
+	// AuthorKeys is a directory of pinned author public keys. When set, every
+	// package published must carry a signature by one of them.
+	//
+	// For a feed that carries other people's work this is the only claim that
+	// survives the feed itself. The index proves that this feed published a file;
+	// an author signature proves who built it, and can be checked by somebody who
+	// does not trust the feed at all. Without it, "the author is responsible for
+	// this package" is a statement with nothing behind it.
+	//
+	// The pinned key is the source of truth. A key that arrives beside a release
+	// proves nothing on its own — whoever replaced the package would replace it too
+	// — so it is only ever compared against what is pinned here, which is a diff a
+	// person had to approve.
+	AuthorKeys string `yaml:"author-keys"`
 	// KeyringPackage ships a <name>-keyring package carrying the feed's public key,
 	// which is the only way a rotated key reaches already-installed routers.
 	KeyringPackage *bool `yaml:"keyring-package"`
