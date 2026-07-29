@@ -2,7 +2,22 @@
 
 Dates are when the tag was cut. Anything not listed is documentation or tests.
 
-## Unreleased
+## v0.2.0 — 2026-07-29
+
+- **owfeed lives at `github.com/owfeed/owfeed`, and its module path is
+  `owfeed.org/owfeed`.** `go install github.com/VizzleTF/owfeed/...` stops
+  working; `go install owfeed.org/owfeed/cmd/owfeed@latest` replaces it. The path
+  names a host rather than a forge so that this is the last move that breaks
+  anyone's install -- Go module paths have no redirect, and neither does `uses:`.
+- **Release attestations now name `owfeed/owfeed`.** An attestation records the
+  repository that produced it, so every binary released before this one fails
+  verification against the new name, and `owfeed/setup` at v0.2.0 refuses it. A
+  feed pinning `feed.yml@v0.1.7` therefore has to move: that tag installs a setup
+  action pointed at a repository name the attestation service no longer answers
+  for.
+- The reusable workflow and the setup action move with it; the `uses:` line in
+  every feed that calls them has to change, because Actions follows no redirect.
+
 
 - **Fixed:** `owfeed/setup` used twice in one job failed the second time. `gh
   release download` refuses to overwrite a file it downloaded a minute earlier,
