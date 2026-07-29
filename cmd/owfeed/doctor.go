@@ -140,6 +140,7 @@ func (a *app) doctorInput(ctx context.Context, c *config.Config, l *lock.Lock, o
 		UsignKey:      usignPub,
 		RequireOrigin: requireOrigin,
 		AuthorKeys:    author,
+		Excluded:      readExclusions(out),
 	}, nil
 }
 
@@ -184,4 +185,31 @@ func loadAuthorKeys(dir string) (map[string]keys.Identity, error) {
 		return nil, fail(exitConfig, "--author-keys %s holds no .pem files", dir)
 	}
 	return out, nil
+}
+
+// readExclusions reads the record `owfeed index` leaves beside the tree.
+//
+// Absent is normal and means nothing was excluded. Unreadable is treated the same
+// way rather than reported: the file only ever downgrades a finding, so failing to
+// read it makes the check stricter, never looser.
+func readExclusions(out string) map[string]bool {
+	b, err := os.ReadFile(filepath.Join(out, ".excluded"))
+	if err != nil {
+		return nil
+	}
+	m := map[string]bool{}
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		// The record holds filenames; coverage works in package names.
+		if i := strings.LastIndex(line, "-"); i > 0 {
+			if j := strings.LastIndex(line[:i], "-"); j > 0 {
+				m[line[:j]] = true
+			}
+		}
+		m[line] = true
+	}
+	return m
 }

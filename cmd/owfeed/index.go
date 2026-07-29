@@ -3,9 +3,14 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
+
+	"owfeed.org/owfeed/internal/apk"
 
 	"owfeed.org/owfeed/internal/badge"
 	"owfeed.org/owfeed/internal/config"
@@ -40,6 +45,17 @@ func (a *app) index(ctx context.Context, args []string) error {
 	}
 	// Badge data is collected across both formats: a package on 24.10 only would
 	// otherwise get no badge, and one on both lines would claim only 25.12.
+	// The pinned author keys, when the config names them. Empty means the feed makes
+	// no claim about who built what, and every package is placed.
+	authorKeys, err := loadAuthorKeys(authorKeyDirFor(a, c))
+	if err != nil {
+		return err
+	}
+
+	// Packages excluded for want of an author signature, so the summary can name how
+	// many rather than leaving it to whoever reads 35 architectures of output.
+	skipped := map[string]bool{}
+
 	badges := map[string]badge.Package{}
 
 	// One command, every line the config declares. A feed serving both is two feeds
@@ -134,6 +150,31 @@ func (a *app) index(ctx context.Context, args []string) error {
 			var placed []string
 			for _, src := range []string{config.Noarch, arch} {
 				for _, p := range tree[src] {
+					// A package nobody signed is left out rather than failing the
+					// whole tree. One author who has not adopted signing yet should
+					// cost their own package and nothing else — a feed carrying
+					// several people's work cannot make everyone wait for the
+					// slowest of them.
+					//
+					// Left out LOUDLY. A package that quietly disappears is the
+					// failure this project has already had: every check reads the
+					// tree, so absence looks identical to "there was nothing to
+					// publish", and a feed once shipped one package of three and
+					// reported itself healthy. Hence the name on stdout and the
+					// count in the summary, not a debug line.
+					if len(authorKeys) > 0 {
+						ok, err := signedByAuthor(ctx, tool, filepath.Join(dist, src), p, authorKeys)
+						if err != nil {
+							return wrap(exitIndex, err)
+						}
+						if !ok {
+							if !skipped[p] {
+								a.logf("EXCLUDED %s: no signature by a pinned author key", p)
+								skipped[p] = true
+							}
+							continue
+						}
+					}
 					if err := copyFile(filepath.Join(dist, src, p), filepath.Join(dir, p)); err != nil {
 						return wrap(exitIndex, err)
 					}
@@ -197,6 +238,26 @@ func (a *app) index(ctx context.Context, args []string) error {
 		return wrap(exitIndex, err)
 	}
 
+	// A record of what was left out, beside the tree rather than only in a log that
+	// scrolls away. It is what lets `doctor` tell a package excluded on purpose from
+	// one that vanished because a build half-failed — the second is an error and
+	// always has been, and blurring the two would give up the check that exists
+	// because this feed once published one package of three.
+	if err := writeExclusions(*out, skipped); err != nil {
+		return wrap(exitIndex, err)
+	}
+
+	// Named, not merely counted: a maintainer reading CI output has to be able to see
+	// WHICH package stopped being published, and act on it.
+	if len(skipped) > 0 {
+		names := make([]string, 0, len(skipped))
+		for n := range skipped {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		a.logf("%d package(s) excluded for want of an author signature: %s",
+			len(names), strings.Join(names, ", "))
+	}
 	a.logf("wrote %s, signed by key %s", *out, signer.Identity)
 	return nil
 }
@@ -243,4 +304,60 @@ func (a *app) writeBadges(out string, badges map[string]badge.Package) error {
 		a.debugf("wrote %d badge file(s) under %s/", len(list)*2, badge.Dir)
 	}
 	return nil
+}
+
+// authorKeyDirFor resolves signing.author-keys against the config's directory.
+func authorKeyDirFor(a *app, c *config.Config) string {
+	if c.Signing.AuthorKeys == "" {
+		return ""
+	}
+	return filepath.Join(a.root(), c.Signing.AuthorKeys)
+}
+
+// signedByAuthor reports whether a package carries a signature by one of the pinned
+// keys.
+//
+// Read from the built artifact rather than taken on trust from whoever staged it:
+// this is the one place the feed can still tell the difference, and after indexing it
+// is too late.
+func signedByAuthor(ctx context.Context, tool *apk.Tool, dir, pkg string, allowed map[string]keys.Identity) (bool, error) {
+	ids, err := index.Signatures(ctx, tool, dir, pkg)
+	if err != nil {
+		return false, err
+	}
+	for _, id := range ids {
+		for _, want := range allowed {
+			if id == want.String() {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+// ExclusionsFile records packages left out of the index, and why.
+const exclusionsFile = ".excluded"
+
+// writeExclusions leaves the record beside the tree. It is rewritten every run,
+// including to empty, so a package that starts being signed stops being listed.
+func writeExclusions(out string, skipped map[string]bool) error {
+	path := filepath.Join(out, exclusionsFile)
+	if len(skipped) == 0 {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	names := make([]string, 0, len(skipped))
+	for n := range skipped {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	var b strings.Builder
+	b.WriteString("# Packages left out of this index for want of a signature by a pinned\n")
+	b.WriteString("# author key. Written by `owfeed index`; read by `owfeed doctor`.\n")
+	for _, n := range names {
+		fmt.Fprintf(&b, "%s\n", n)
+	}
+	return os.WriteFile(path, []byte(b.String()), 0o644)
 }

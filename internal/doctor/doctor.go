@@ -145,6 +145,11 @@ type Input struct {
 	// it too; its value is that it can disagree with the pin, which is how a
 	// rotated or substituted signing key is noticed.
 	AuthorKeys map[string]keys.Identity
+	// Excluded names packages `owfeed index` deliberately left out, read from the
+	// record it writes beside the tree. Without it a package excluded for want of a
+	// signature is indistinguishable from one that vanished, and the check that
+	// catches the second would have to be given up to tolerate the first.
+	Excluded map[string]bool
 }
 
 // Run executes every check.
@@ -441,11 +446,31 @@ func checkCoverage(r *Report, in Input) {
 			for _, e := range idx.Entries {
 				have[e.Name] = true
 			}
-			var missing []string
+			var missing, excluded []string
 			for _, name := range want {
-				if !have[name] {
-					missing = append(missing, name)
+				if have[name] {
+					continue
 				}
+				// Two ways to be absent, and they are not the same finding. A
+				// package `owfeed index` left out for want of an author signature
+				// is a decision it recorded; anything else vanished, which is what
+				// this check exists to catch.
+				if in.Excluded[name] {
+					excluded = append(excluded, name)
+					continue
+				}
+				missing = append(missing, name)
+			}
+			if len(excluded) > 0 {
+				sort.Strings(excluded)
+				r.add(Finding{
+					ID: "OWF407", Severity: Warn, Where: where,
+					What: "not carried, because no pinned author key signed them: " + strings.Join(excluded, ", "),
+					Why: "the rest of the feed publishes normally — one author who has not adopted signing costs " +
+						"their own package and nobody else's — but subscribers of these packages stop receiving updates " +
+						"and nothing on their router says why",
+					Fix: "have the author sign the release with the key pinned for them, or drop the package from the config",
+				})
 			}
 			if len(missing) == 0 {
 				continue
