@@ -5,7 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"owfeed.org/owfeed/internal/badge"
 	"owfeed.org/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/feedindex"
 	"owfeed.org/owfeed/internal/ipkindex"
 	"owfeed.org/owfeed/internal/lock"
 	"owfeed.org/owfeed/internal/usign"
@@ -17,7 +19,11 @@ import (
 // it gzipped while the signature covers the uncompressed form, verifies usign
 // rather than EC, and is pointed at a directory rather than at the index file. A
 // feed serving both lines is really two feeds under one URL.
-func (a *app) indexIPK(c *config.Config, l *lock.Lock, r config.Release, dist, out string) error {
+// indexIPK builds the opkg side. badges collects what each package is called and at
+// which version, so the badge files describe every line the feed serves rather than
+// only the apk one — a package on 24.10 and nowhere else would otherwise have no badge
+// at all, and one on both would claim to be on 25.12 only.
+func (a *app) indexIPK(c *config.Config, l *lock.Lock, r config.Release, dist, out string, badges map[string]badge.Package) error {
 	key, err := a.usignKey(c)
 	if err != nil {
 		return err
@@ -38,6 +44,7 @@ func (a *app) indexIPK(c *config.Config, l *lock.Lock, r config.Release, dist, o
 		}
 
 		total := 0
+		recorded := false
 		for _, arch := range lr.Arches {
 			dir := filepath.Join(out, expandLayout(c.Layout.Path, r.Line, arch))
 			if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -70,6 +77,20 @@ func (a *app) indexIPK(c *config.Config, l *lock.Lock, r config.Release, dist, o
 			}
 			total += placed
 			a.debugf("%s: %d packages, index %d bytes", dir, len(res.Packages), res.Size)
+
+			if badges != nil && !recorded {
+				idx, err := feedindex.ReadDir(dir)
+				if err != nil {
+					return wrap(exitIndex, err)
+				}
+				for _, e := range idx.Entries {
+					p := badges[e.Name]
+					p.Name, p.Version = e.Name, e.Version
+					p.Releases = append(p.Releases, r.Line)
+					badges[e.Name] = p
+				}
+				recorded = true
+			}
 		}
 		a.logf("%s: %d package placement(s) across %d architecture(s), opkg format", r.Line, total, len(lr.Arches))
 	}

@@ -38,6 +38,10 @@ func (a *app) index(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	// Badge data is collected across both formats: a package on 24.10 only would
+	// otherwise get no badge, and one on both lines would claim only 25.12.
+	badges := map[string]badge.Package{}
+
 	// One command, every line the config declares. A feed serving both is two feeds
 	// under one URL, and building them separately is how one of them goes stale.
 	lines := 0
@@ -46,7 +50,7 @@ func (a *app) index(ctx context.Context, args []string) error {
 			continue
 		}
 		if r.Format == config.FormatIPK {
-			if err := a.indexIPK(c, l, r, dist, *out); err != nil {
+			if err := a.indexIPK(c, l, r, dist, *out, badges); err != nil {
 				return err
 			}
 			lines++
@@ -63,8 +67,9 @@ func (a *app) index(ctx context.Context, args []string) error {
 		if lines == 0 {
 			return fail(exitConfig, "no release line matched --release %q", *onlyLine)
 		}
-		// Nothing else to do: the ipk side already wrote its key and its trees.
-		return nil
+		// The ipk side already wrote its key and its trees; its badges are still ours
+		// to write, because this is the only place both formats have been seen.
+		return a.writeBadges(*out, badges)
 	}
 
 	tool, err := a.tool(ctx, l)
@@ -104,7 +109,6 @@ func (a *app) index(ctx context.Context, args []string) error {
 		return wrap(exitKey, err)
 	}
 
-	badges := map[string]badge.Package{}
 	seenLine := map[string]bool{}
 
 	for _, r := range apkLines {
@@ -184,18 +188,8 @@ func (a *app) index(ctx context.Context, args []string) error {
 		return wrap(exitIndex, err)
 	}
 
-	// One badge file per package, so a maintainer whose work this feed carries can
-	// show it in their README without the feed having to know they did.
-	list := make([]badge.Package, 0, len(badges))
-	for _, b := range badges {
-		list = append(list, b)
-	}
-	badge.Sort(list)
-	if err := badge.Write(*out, list); err != nil {
-		return wrap(exitIndex, err)
-	}
-	if len(list) > 0 {
-		a.debugf("wrote %d badge file(s) under %s/", len(list)*2, badge.Dir)
+	if err := a.writeBadges(*out, badges); err != nil {
+		return err
 	}
 	// GitHub Pages runs Jekyll unless told not to, and Jekyll drops paths beginning
 	// with an underscore or a dot. On a tree of binaries that silently removes files.
@@ -232,4 +226,21 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	return out.Close()
+}
+
+// writeBadges renders one badge file per package, so a maintainer whose work a feed
+// carries can show it in their README without the feed having to know they did.
+func (a *app) writeBadges(out string, badges map[string]badge.Package) error {
+	list := make([]badge.Package, 0, len(badges))
+	for _, b := range badges {
+		list = append(list, b)
+	}
+	badge.Sort(list)
+	if err := badge.Write(out, list); err != nil {
+		return wrap(exitIndex, err)
+	}
+	if len(list) > 0 {
+		a.debugf("wrote %d badge file(s) under %s/", len(list)*2, badge.Dir)
+	}
+	return nil
 }

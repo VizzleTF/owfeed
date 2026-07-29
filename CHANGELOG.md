@@ -2,6 +2,14 @@
 
 Dates are when the tag was cut. Anything not listed is documentation or tests.
 
+## v0.3.2 — 2026-07-29
+
+- **Fixed:** the releases badge named only the apk line. Badge data was collected in
+  the apk branch of `owfeed index` alone, so a package the feed also serves through
+  opkg showed `25.12` when it was on both, and a package served *only* on 24.10 got
+  no badge at all. Both formats now contribute, and the lines are ordered newest
+  first — numerically per component, because "9.10" beats "25.12" as a string.
+
 ## v0.3.1 — 2026-07-29
 
 - **Added:** `owfeed index` writes `badge/<package>.json` and

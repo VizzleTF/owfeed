@@ -10,7 +10,9 @@ import (
 func TestWrite(t *testing.T) {
 	root := t.TempDir()
 	err := Write(root, []Package{
-		{Name: "luci-theme-footstrap", Version: "0.11.6-r1", Releases: []string{"25.12", "24.10"}},
+		// Deliberately oldest-first: the ipk line is indexed before the apk one, and
+		// the badge must not inherit that order.
+		{Name: "luci-theme-footstrap", Version: "0.11.6-r1", Releases: []string{"24.10", "25.12"}},
 		{Name: "solo", Version: "1.0.0-r1", Releases: []string{"25.12"}},
 	})
 	if err != nil {
@@ -93,4 +95,23 @@ func read(t *testing.T, path string) Endpoint {
 		t.Fatalf("%s: %v", path, err)
 	}
 	return e
+}
+
+func TestReleaseOrder(t *testing.T) {
+	for _, tc := range []struct{ in, want []string }{
+		{[]string{"24.10", "25.12"}, []string{"25.12", "24.10"}},
+		{[]string{"25.12", "24.10"}, []string{"25.12", "24.10"}},
+		// Lexically "9.10" beats "25.12"; numerically it does not.
+		{[]string{"25.12", "9.10"}, []string{"25.12", "9.10"}},
+		{[]string{"snapshot", "25.12"}, []string{"snapshot", "25.12"}},
+	} {
+		got := append([]string(nil), tc.in...)
+		sortReleases(got)
+		for i := range tc.want {
+			if got[i] != tc.want[i] {
+				t.Errorf("sortReleases(%v) = %v, want %v", tc.in, got, tc.want)
+				break
+			}
+		}
+	}
 }

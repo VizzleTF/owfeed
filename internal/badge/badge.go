@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -81,11 +82,16 @@ func Write(root string, pkgs []Package) error {
 		if len(p.Releases) == 0 {
 			continue
 		}
+		// Newest first, whatever order the caller indexed the lines in. A reader
+		// checking whether their router is covered looks for their own release, and
+		// the newest is the one most of them are on.
+		lines := append([]string(nil), p.Releases...)
+		sortReleases(lines)
 		// A middle dot rather than a comma: shields renders the message verbatim, and
 		// a comma reads as a list that got cut off when the badge is narrow.
 		if err := write(dir, p.Name+"-releases.json", Endpoint{
 			SchemaVersion: 1, Label: Label,
-			Message: strings.Join(p.Releases, " · "), Color: colour,
+			Message: strings.Join(lines, " · "), Color: colour,
 		}); err != nil {
 			return err
 		}
@@ -110,4 +116,29 @@ func URL(feedURL, pkg, suffix string) string {
 // Sort orders packages by name so the written set does not depend on map iteration.
 func Sort(pkgs []Package) {
 	sort.Slice(pkgs, func(i, j int) bool { return pkgs[i].Name < pkgs[j].Name })
+}
+
+// sortReleases orders release lines newest first.
+//
+// Numerically per component rather than lexically: "9.10" sorts after "25.12" as a
+// string, and OpenWrt has used a leading 9 before now.
+func sortReleases(lines []string) {
+	sort.Slice(lines, func(i, j int) bool { return newer(lines[i], lines[j]) })
+}
+
+func newer(a, b string) bool {
+	as, bs := strings.Split(a, "."), strings.Split(b, ".")
+	for i := 0; i < len(as) && i < len(bs); i++ {
+		x, errA := strconv.Atoi(as[i])
+		y, errB := strconv.Atoi(bs[i])
+		if errA != nil || errB != nil {
+			// Not a number on either side: fall back to something total, so the
+			// order is at least stable.
+			return a > b
+		}
+		if x != y {
+			return x > y
+		}
+	}
+	return len(as) > len(bs)
 }
