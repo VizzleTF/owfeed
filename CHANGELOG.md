@@ -2,6 +2,15 @@
 
 Dates are when the tag was cut. Anything not listed is documentation or tests.
 
+## v0.4.4 — 2026-07-29
+
+- **Fixed:** `doctor` failed a feed on its own keyring package. OWF304 requires a
+  signature by a pinned author key, and the keyring package is the one package a feed
+  publishes about itself — signed by the feed, because there is no third-party author to
+  sign it. Indexing already exempted it; the check did not, so every publish of a feed
+  with `author-keys` and `keyring-package` both on failed on 35 architectures of a
+  package that was correct.
+
 ## v0.4.3 — 2026-07-29
 
 - **Fixed:** `signing.keyring-package` was unreachable for the feeds it exists for.
@@ -10,7 +19,7 @@ Dates are when the tag was cut. Anything not listed is documentation or tests.
   keeps in CI secrets, not on the maintainer's laptop. Every publish failed with an
   instruction the maintainer could not carry out.
 
-  The first publication now counts as `1.0` and logs that it did. A later key that
+  The first publication now counts as `1.1-r1` and logs that it did. A later key that
   disagrees with the lockfile is still refused, because counting a rotation needs the
   state the lockfile holds — and whoever rotated has the new key in hand by then.
 

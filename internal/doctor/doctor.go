@@ -23,6 +23,7 @@ import (
 	"owfeed.org/owfeed/internal/feedindex"
 	"owfeed.org/owfeed/internal/index"
 	"owfeed.org/owfeed/internal/ipkindex"
+	"owfeed.org/owfeed/internal/keyring"
 	"owfeed.org/owfeed/internal/keys"
 	"owfeed.org/owfeed/internal/lock"
 	"owfeed.org/owfeed/internal/meta"
@@ -640,7 +641,19 @@ func checkIndexDir(ctx context.Context, r *Report, in Input, dir string, arches 
 	// feed. Without it, "the author is responsible for this package" is a claim
 	// with no way to test it.
 	if len(in.AuthorKeys) > 0 {
+		// The keyring package is the feed's own — the one package a feed publishes
+		// about itself, signed by the feed because there is no third-party author to
+		// sign it. Holding it to a rule about other people's work would fail every
+		// publish of the only package that carries the feed's key to routers, which is
+		// what indexing already exempts it from.
+		var keyringPrefix string
+		if in.Config != nil {
+			keyringPrefix = keyring.NameFor(in.Config.Feed.Name) + "-"
+		}
 		for _, p := range pkgs {
+			if keyringPrefix != "" && strings.HasPrefix(p, keyringPrefix) {
+				continue
+			}
 			r.Checked++
 			ids, err := index.Signatures(ctx, in.Tool, dir, p)
 			if err != nil {
