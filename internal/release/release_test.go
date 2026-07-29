@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/VizzleTF/owfeed/internal/usign"
+	"owfeed.org/owfeed/internal/usign"
 )
 
 // A router that installed an earlier release is running a reader that parses this

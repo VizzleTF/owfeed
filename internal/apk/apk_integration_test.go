@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/VizzleTF/owfeed/internal/apk"
-	"github.com/VizzleTF/owfeed/internal/keys"
+	"owfeed.org/owfeed/internal/apk"
+	"owfeed.org/owfeed/internal/keys"
 )
 
 // This is the only test that proves owfeed can actually produce a signed index, so it

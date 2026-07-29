@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/VizzleTF/owfeed/internal/config"
-	"github.com/VizzleTF/owfeed/internal/ipk"
+	"owfeed.org/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/ipk"
 )
 
 // buildIPK produces the 24.10 container from the same staged rootfs the apk path

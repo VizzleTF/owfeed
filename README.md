@@ -16,20 +16,20 @@ test it on a real router, sign it, get it into a feed — with files you can cop
 ## Install
 
 ```sh
-go install github.com/VizzleTF/owfeed/cmd/owfeed@latest
+go install owfeed.org/owfeed/cmd/owfeed@latest
 ```
 
 Or a release binary, checked against the attestation GitHub's own workflow produced for it — not
 against a checksum from the same release, which whoever replaced the binary could replace too:
 
 ```sh
-gh release download v0.1.7 -R VizzleTF/owfeed -p 'owfeed-linux-amd64'
-gh attestation verify owfeed-linux-amd64 -R VizzleTF/owfeed \
-  --signer-workflow VizzleTF/owfeed/.github/workflows/release.yml
+gh release download v0.1.7 -R owfeed/owfeed -p 'owfeed-linux-amd64'
+gh attestation verify owfeed-linux-amd64 -R owfeed/owfeed \
+  --signer-workflow owfeed/owfeed/.github/workflows/release.yml
 chmod +x owfeed-linux-amd64 && sudo mv owfeed-linux-amd64 /usr/local/bin/owfeed
 ```
 
-In GitHub Actions, `VizzleTF/owfeed/setup@v0.1.7` does that verification for you. Builds exist for
+In GitHub Actions, `owfeed/owfeed/setup@v0.1.7` does that verification for you. Builds exist for
 linux and darwin, amd64 and arm64.
 
 **What it needs.** Nothing for `build`, `sign`, `index` or `publish`: the apk toolchain is fetched
@@ -210,7 +210,7 @@ jobs:
       pages: write
       id-token: write
       actions: read
-    uses: VizzleTF/owfeed/.github/workflows/feed.yml@v0.1.7
+    uses: owfeed/owfeed/.github/workflows/feed.yml@v0.1.7
     with:
       owfeed-version: v0.1.7
       smoke-releases: "25.12 24.10"
@@ -231,7 +231,7 @@ The `environment:` on the publish job is still what gates the run behind a revie
 If you want the steps yourself, take the tool and leave the shape:
 
 ```yaml
-- uses: VizzleTF/owfeed/setup@v0.1.7
+- uses: owfeed/owfeed/setup@v0.1.7
   with: { version: v0.1.7 }
 - run: owfeed --frozen-lock build && owfeed sign && owfeed index
   env:
@@ -266,7 +266,7 @@ owfeed smoke           # installs the built feed on a real OpenWrt image
 `doctor` proves the tree is coherent. This proves a router accepts it — following your own published
 snippet, and failing if `apk` asks for `--allow-untrusted`. They are different claims.
 
-**This is not [owlab](https://github.com/VizzleTF/owlab), and does not use it.** owlab, by the same
+**This is not [owlab](https://github.com/owfeed/owlab), and does not use it.** owlab, by the same
 author, is the development cycle: several releases running side by side for as long as you are
 working, sources syncing into them, LuCI open in a browser. `owfeed smoke` is one gate before a
 publish — one architecture, one install, one answer, then gone. The two are independent on purpose:
@@ -333,7 +333,7 @@ Cloudflare R2 and rsync · SBOM · key rotation commands · reusing an already-p
 instead of re-signing it unchanged.
 
 **SDK builds are not on this list, and are not coming.** owfeed packages, it does not compile.
-Build with [owlab](https://github.com/VizzleTF/owlab), `openwrt/gh-action-sdk`, or your own SDK
+Build with [owlab](https://github.com/owfeed/owlab), `openwrt/gh-action-sdk`, or your own SDK
 call, and leave the result in `dist/<arch>/` — every stage here reads that directory and asks
 nothing about how the bytes were made. See [the artifact contract](docs/artifact-contract.md) and
 [ECOSYSTEM.md](docs/ECOSYSTEM.md) for where the boundary runs and why it is drawn there.
@@ -342,7 +342,7 @@ nothing about how the bytes were made. See [the artifact contract](docs/artifact
 
 ## A feed built with it
 
-[VizzleTF/owfeed-packages](https://github.com/VizzleTF/owfeed-packages) — a live feed carrying a LuCI
+[owfeed/owfeed-packages](https://github.com/owfeed/owfeed-packages) — a live feed carrying a LuCI
 theme and a static Go binary across 20 architectures. Pull requests build, sign, index and check the
 whole thing with a throwaway key, so a fork never comes near the feed's own.
 
@@ -385,7 +385,7 @@ collide: a noarch package keeps the filename an installer already on a router lo
 [podkop_autoupdater](https://github.com/VizzleTF/podkop_autoupdater/blob/main/RELEASING.md) is a
 worked example, including what its signing key does and does not vouch for.
 
-[The feed's CONTRIBUTING](https://github.com/VizzleTF/owfeed-packages/blob/main/CONTRIBUTING.md)
+[The feed's CONTRIBUTING](https://github.com/owfeed/owfeed-packages/blob/main/CONTRIBUTING.md)
 walks through both sides.
 
 ## Docs

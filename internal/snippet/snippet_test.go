@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/VizzleTF/owfeed/internal/config"
-	"github.com/VizzleTF/owfeed/internal/snippet"
+	"owfeed.org/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/snippet"
 )
 
 func input() snippet.Input {

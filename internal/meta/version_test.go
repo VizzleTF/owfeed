@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/VizzleTF/owfeed/internal/meta"
+	"owfeed.org/owfeed/internal/meta"
 )
 
 // versionCorpus is shared with the integration test, which puts every entry to the

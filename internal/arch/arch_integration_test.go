@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/VizzleTF/owfeed/internal/arch"
+	"owfeed.org/owfeed/internal/arch"
 )
 
 func requireNetwork(t *testing.T) {

@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/VizzleTF/owfeed/internal/apk"
+	"owfeed.org/owfeed/internal/apk"
 )
 
 // Release is the point release whose host apk these tests run against.

@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/VizzleTF/owfeed/internal/config"
-	"github.com/VizzleTF/owfeed/internal/doctor"
-	"github.com/VizzleTF/owfeed/internal/index"
+	"owfeed.org/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/doctor"
+	"owfeed.org/owfeed/internal/index"
 )
 
 // publish gates a built tree on the checks that matter and then hands it to the

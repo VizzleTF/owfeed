@@ -9,11 +9,11 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/VizzleTF/owfeed/internal/apk"
-	"github.com/VizzleTF/owfeed/internal/arch"
-	"github.com/VizzleTF/owfeed/internal/config"
-	"github.com/VizzleTF/owfeed/internal/index"
-	"github.com/VizzleTF/owfeed/internal/keys"
+	"owfeed.org/owfeed/internal/apk"
+	"owfeed.org/owfeed/internal/arch"
+	"owfeed.org/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/index"
+	"owfeed.org/owfeed/internal/keys"
 )
 
 func (a *app) sign(ctx context.Context, args []string) error {

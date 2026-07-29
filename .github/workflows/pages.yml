@@ -58,6 +58,35 @@ jobs:
           cp docs/*.md site/docs/
           cp README.md README_ru.md site/docs/
 
+          # The vanity import paths. `go install owfeed.org/owfeed/cmd/owfeed@latest`
+          # fetches https://owfeed.org/owfeed?go-get=1 and reads the meta tag below to
+          # learn where the source actually lives.
+          #
+          # This is the point of the exercise and it is worth stating plainly: an
+          # import path that names a host we control survives moving between accounts,
+          # organisations, or off GitHub entirely. The path VizzleTF/* would not have --
+          # this migration would have broken `go install` for everyone, permanently,
+          # because Go module paths have no redirect. The cost is that owfeed.org is now
+          # a dependency of `go install` as well as of the feed; that dependency was
+          # already accepted when the feed's URL moved onto the domain.
+          #
+          # A human following the link gets sent to the repository rather than a blank
+          # page, because a URL that only answers a robot is a URL somebody will report
+          # as broken.
+          for tool in owfeed owlab; do
+            mkdir -p "site/$tool"
+            cat > "site/$tool/index.html" <<HTML
+          <!doctype html>
+          <meta charset="utf-8">
+          <meta name="go-import" content="owfeed.org/$tool git https://github.com/owfeed/$tool">
+          <meta name="go-source" content="owfeed.org/$tool https://github.com/owfeed/$tool https://github.com/owfeed/$tool/tree/main{/dir} https://github.com/owfeed/$tool/blob/main{/dir}/{file}#L{line}">
+          <meta http-equiv="refresh" content="0; url=https://github.com/owfeed/$tool">
+          <title>owfeed.org/$tool</title>
+          <p><code>go install owfeed.org/$tool/cmd/$tool@latest</code> &mdash;
+             source at <a href="https://github.com/owfeed/$tool">github.com/owfeed/$tool</a>.
+          HTML
+          done
+
           # Pages serves what it is given; nothing here renders Markdown, so the
           # index links to GitHub for prose and serves the schema itself.
           cat > site/index.html <<'HTML'
@@ -83,12 +112,12 @@ jobs:
                 OpenWrt package, step by step (<a href="/cookbook/ru/">по-русски</a>)</li>
           <li><a href="/schema/v1.json"><code>schema/v1.json</code></a> — the
                 <code>owfeed.yml</code> schema, generated from the code</li>
-            <li><a href="https://github.com/VizzleTF/owfeed">owfeed</a> — build, sign, index, publish</li>
-            <li><a href="https://github.com/VizzleTF/owlab">owlab</a> — develop and prove a package works</li>
-            <li><a href="https://github.com/VizzleTF/owfeed/blob/main/docs/ECOSYSTEM.md">ECOSYSTEM.md</a>
+            <li><a href="https://github.com/owfeed/owfeed">owfeed</a> — build, sign, index, publish</li>
+            <li><a href="https://github.com/owfeed/owlab">owlab</a> — develop and prove a package works</li>
+            <li><a href="https://github.com/owfeed/owfeed/blob/main/docs/ECOSYSTEM.md">ECOSYSTEM.md</a>
                 — where the boundary between them runs</li>
-            <li><a href="https://github.com/VizzleTF/owfeed/blob/main/docs/artifact-contract.md">artifact contract</a>
-                · <a href="https://github.com/VizzleTF/owfeed/blob/main/docs/manifest-format.md">manifest format</a></li>
+            <li><a href="https://github.com/owfeed/owfeed/blob/main/docs/artifact-contract.md">artifact contract</a>
+                · <a href="https://github.com/owfeed/owfeed/blob/main/docs/manifest-format.md">manifest format</a></li>
           </ul>
           HTML
 

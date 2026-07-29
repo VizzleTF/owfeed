@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/VizzleTF/owfeed/internal/config"
-	"github.com/VizzleTF/owfeed/internal/ipkindex"
-	"github.com/VizzleTF/owfeed/internal/lock"
-	"github.com/VizzleTF/owfeed/internal/usign"
+	"owfeed.org/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/ipkindex"
+	"owfeed.org/owfeed/internal/lock"
+	"owfeed.org/owfeed/internal/usign"
 )
 
 // indexIPK lays out and indexes the 24.10 side of a feed.

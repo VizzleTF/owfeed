@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/VizzleTF/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/config"
 )
 
 // stagePo copies the real footstrap catalogues into a source tree shaped the way

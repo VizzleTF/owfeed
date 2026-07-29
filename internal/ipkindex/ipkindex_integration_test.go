@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/VizzleTF/owfeed/internal/ipk"
-	"github.com/VizzleTF/owfeed/internal/ipkindex"
-	"github.com/VizzleTF/owfeed/internal/usign"
+	"owfeed.org/owfeed/internal/ipk"
+	"owfeed.org/owfeed/internal/ipkindex"
+	"owfeed.org/owfeed/internal/usign"
 )
 
 // The only useful proof of an opkg feed is opkg using it, with signature checking

@@ -1,4 +1,4 @@
-module github.com/VizzleTF/owfeed
+module owfeed.org/owfeed
 
 go 1.25.3
 

@@ -12,8 +12,8 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/VizzleTF/owfeed/internal/config"
-	"github.com/VizzleTF/owfeed/internal/lock"
+	"owfeed.org/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/lock"
 )
 
 // Exit codes. The distinction between 7 and 8 is load-bearing: CI may retry an

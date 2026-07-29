@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/VizzleTF/owfeed/internal/ipkindex"
+	"owfeed.org/owfeed/internal/ipkindex"
 )
 
 // A Size field that will not parse used to become zero, because the error from

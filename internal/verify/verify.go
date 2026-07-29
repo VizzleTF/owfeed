@@ -23,8 +23,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/VizzleTF/owfeed/internal/config"
-	"github.com/VizzleTF/owfeed/internal/feedindex"
+	"owfeed.org/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/feedindex"
 )
 
 // Options configure a run.

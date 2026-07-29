@@ -7,9 +7,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/VizzleTF/owfeed/internal/config"
-	"github.com/VizzleTF/owfeed/internal/index"
-	"github.com/VizzleTF/owfeed/internal/keys"
+	"owfeed.org/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/index"
+	"owfeed.org/owfeed/internal/keys"
 )
 
 const defaultOut = "out"

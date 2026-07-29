@@ -24,8 +24,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/VizzleTF/owfeed/internal/config"
-	"github.com/VizzleTF/owfeed/internal/feedindex"
+	"owfeed.org/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/feedindex"
 )
 
 // DefaultArch is the architecture smoked. It is x86_64 because that is the one

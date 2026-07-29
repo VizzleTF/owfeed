@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/VizzleTF/owfeed/internal/apk"
-	"github.com/VizzleTF/owfeed/internal/build"
-	"github.com/VizzleTF/owfeed/internal/config"
-	"github.com/VizzleTF/owfeed/internal/testapk"
+	"owfeed.org/owfeed/internal/apk"
+	"owfeed.org/owfeed/internal/build"
+	"owfeed.org/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/testapk"
 )
 
 // stageFixture writes a small but representative payload: a conffile, an init

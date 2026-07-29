@@ -16,7 +16,7 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 
-	"github.com/VizzleTF/owfeed/internal/usign"
+	"owfeed.org/owfeed/internal/usign"
 )
 
 // Acquire returns a directory holding the SDK's host apk for pointRelease,

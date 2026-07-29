@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/VizzleTF/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/config"
 )
 
 // Input is what the instructions are rendered from.

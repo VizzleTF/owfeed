@@ -5,7 +5,7 @@ import (
 	"flag"
 	"os"
 
-	"github.com/VizzleTF/owfeed/internal/usign"
+	"owfeed.org/owfeed/internal/usign"
 )
 
 // verifyArtifact checks an upstream release against its author's signature.

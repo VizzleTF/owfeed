@@ -9,8 +9,8 @@ times on a fact belonging to another repository, never on one of its own. Nothin
 in owfeed's CI touches owlab, so nothing here could notice when owlab shipped a
 feature this file called unimplemented. Each repository now keeps its own:
 
-- **owlab** — [`docs/STATUS.md`](https://github.com/VizzleTF/owlab/blob/main/docs/STATUS.md)
-- **owfeed-packages** — [`STATUS.md`](https://github.com/VizzleTF/owfeed-packages/blob/main/STATUS.md)
+- **owlab** — [`docs/STATUS.md`](https://github.com/owfeed/owlab/blob/main/docs/STATUS.md)
+- **owfeed-packages** — [`STATUS.md`](https://github.com/owfeed/owfeed-packages/blob/main/STATUS.md)
 
 The boundaries are meant to outlive any particular week. A status file is a
 snapshot and will go stale; keeping it beside the code that changes it is what

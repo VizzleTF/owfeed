@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/VizzleTF/owfeed/internal/config"
-	"github.com/VizzleTF/owfeed/internal/lmo"
+	"owfeed.org/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/lmo"
 )
 
 // compileCatalogues turns a package's .po files into the .lmo files LuCI reads and

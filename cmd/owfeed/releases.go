@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/VizzleTF/owfeed/internal/arch"
-	"github.com/VizzleTF/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/arch"
+	"owfeed.org/owfeed/internal/config"
 )
 
 // releases reports what owfeed believes about OpenWrt's published releases:

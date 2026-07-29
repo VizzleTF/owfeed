@@ -3,7 +3,7 @@
 The repository references its own release tag in places that have to be moved before
 the tag exists, so the tag contains its own correct self-reference.
 
-1. `.github/workflows/feed.yml` — every `uses: VizzleTF/owfeed/setup@vX.Y.Z` line,
+1. `.github/workflows/feed.yml` — every `uses: owfeed/owfeed/setup@vX.Y.Z` line,
    one per job, and the tags in the usage comments at the top. Do not count them
    from memory; `grep -c 'setup@v' .github/workflows/feed.yml` is the check.
 2. `README.md` and `README_ru.md` — the download example and the action snippets.

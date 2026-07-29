@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/VizzleTF/owfeed/internal/config"
-	"github.com/VizzleTF/owfeed/internal/ipkindex"
-	"github.com/VizzleTF/owfeed/internal/lock"
-	"github.com/VizzleTF/owfeed/internal/snippet"
+	"owfeed.org/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/ipkindex"
+	"owfeed.org/owfeed/internal/lock"
+	"owfeed.org/owfeed/internal/snippet"
 )
 
 func input(t *testing.T, pkgs ...config.Package) Input {

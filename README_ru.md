@@ -17,20 +17,20 @@ Noarch-пакет на все 35 архитектур — собран, подп
 ## Установка
 
 ```sh
-go install github.com/VizzleTF/owfeed/cmd/owfeed@latest
+go install owfeed.org/owfeed/cmd/owfeed@latest
 ```
 
 Либо релизный бинарь, сверенный с аттестацией, которую выпустил собственный workflow GitHub, — а не
 с контрольной суммой из того же релиза, которую подменивший бинарь подменил бы заодно:
 
 ```sh
-gh release download v0.1.7 -R VizzleTF/owfeed -p 'owfeed-linux-amd64'
-gh attestation verify owfeed-linux-amd64 -R VizzleTF/owfeed \
-  --signer-workflow VizzleTF/owfeed/.github/workflows/release.yml
+gh release download v0.1.7 -R owfeed/owfeed -p 'owfeed-linux-amd64'
+gh attestation verify owfeed-linux-amd64 -R owfeed/owfeed \
+  --signer-workflow owfeed/owfeed/.github/workflows/release.yml
 chmod +x owfeed-linux-amd64 && sudo mv owfeed-linux-amd64 /usr/local/bin/owfeed
 ```
 
-В GitHub Actions эту проверку делает за вас `VizzleTF/owfeed/setup@v0.1.7`. Сборки есть под linux и
+В GitHub Actions эту проверку делает за вас `owfeed/owfeed/setup@v0.1.7`. Сборки есть под linux и
 darwin, amd64 и arm64.
 
 **Что нужно рядом.** Для `build`, `sign`, `index` и `publish` — ничего: apk-тулчейн скачивается из
@@ -210,7 +210,7 @@ jobs:
       pages: write
       id-token: write
       actions: read
-    uses: VizzleTF/owfeed/.github/workflows/feed.yml@v0.1.7
+    uses: owfeed/owfeed/.github/workflows/feed.yml@v0.1.7
     with:
       owfeed-version: v0.1.7
       smoke-releases: "25.12 24.10"
@@ -231,7 +231,7 @@ job нет environment, поэтому прочитать environment-секре
 Если шаги нужны свои — берите инструмент, оставьте форму:
 
 ```yaml
-- uses: VizzleTF/owfeed/setup@v0.1.7
+- uses: owfeed/owfeed/setup@v0.1.7
   with: { version: v0.1.7 }
 - run: owfeed --frozen-lock build && owfeed sign && owfeed index
   env:
@@ -265,7 +265,7 @@ owfeed smoke           # ставит собранный фид на живой 
 `doctor` доказывает, что дерево согласовано. Это доказывает, что роутер его принимает — по вашей же
 опубликованной инструкции, с падением, если apk попросит `--allow-untrusted`. Это разные утверждения.
 
-**Это не [owlab](https://github.com/VizzleTF/owlab) и его не использует.** owlab того же автора — это
+**Это не [owlab](https://github.com/owfeed/owlab) и его не использует.** owlab того же автора — это
 цикл разработки: несколько релизов рядом друг с другом столько, сколько идёт работа, исходники
 синкаются внутрь, LuCI открыт в браузере. `owfeed smoke` — одна проверка перед публикацией: одна
 архитектура, одна установка, один ответ, и всё исчезло. Они независимы намеренно: зависимость
@@ -330,7 +330,7 @@ Cloudflare R2 и rsync · SBOM · команды ротации ключа · п
 пакета вместо переподписи без изменений.
 
 **Сборок через SDK в этом списке нет и не будет.** owfeed пакует, но не компилирует. Собирайте
-[owlab](https://github.com/VizzleTF/owlab), `openwrt/gh-action-sdk` или своим вызовом SDK и
+[owlab](https://github.com/owfeed/owlab), `openwrt/gh-action-sdk` или своим вызовом SDK и
 оставьте результат в `dist/<arch>/` — каждая стадия здесь читает этот каталог и не спрашивает, чем
 сделаны байты. Где проходит граница и почему именно там — [контракт артефакта](docs/artifact-contract.md)
 и [ECOSYSTEM.md](docs/ECOSYSTEM.md).
@@ -339,7 +339,7 @@ Cloudflare R2 и rsync · SBOM · команды ротации ключа · п
 
 ## Фид, собранный этим
 
-[VizzleTF/owfeed-packages](https://github.com/VizzleTF/owfeed-packages) — живой фид: тема LuCI и
+[owfeed/owfeed-packages](https://github.com/owfeed/owfeed-packages) — живой фид: тема LuCI и
 статический Go-бинарь на 20 архитектур. Пулл-реквесты собирают, подписывают, индексируют и проверяют
 всё целиком на одноразовом ключе, так что форк к ключу фида не приближается.
 
@@ -382,7 +382,7 @@ usign-ключом: это схема, которую OpenWrt уже везёт 
 [podkop_autoupdater](https://github.com/VizzleTF/podkop_autoupdater/blob/main/RELEASING.md) —
 разобранный пример, включая то, за что его ключ подписи ручается и за что нет.
 
-[CONTRIBUTING фида](https://github.com/VizzleTF/owfeed-packages/blob/main/CONTRIBUTING_ru.md)
+[CONTRIBUTING фида](https://github.com/owfeed/owfeed-packages/blob/main/CONTRIBUTING_ru.md)
 разбирает обе стороны.
 
 ## Документация

@@ -7,8 +7,8 @@ has owfeed on one side of it.*
 
 How much of what follows actually exists is answered per repository, beside the code
 that changes it: [owfeed](STATUS.md),
-[owlab](https://github.com/VizzleTF/owlab/blob/main/docs/STATUS.md),
-[owfeed-packages](https://github.com/VizzleTF/owfeed-packages/blob/main/STATUS.md).
+[owlab](https://github.com/owfeed/owlab/blob/main/docs/STATUS.md),
+[owfeed-packages](https://github.com/owfeed/owfeed-packages/blob/main/STATUS.md).
 One shared status file was tried first and went stale twice, both times on a fact
 belonging to a repository whose CI never reads this one.
 

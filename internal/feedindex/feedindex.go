@@ -30,8 +30,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/VizzleTF/owfeed/internal/ipkindex"
-	"github.com/VizzleTF/owfeed/internal/usign"
+	"owfeed.org/owfeed/internal/ipkindex"
+	"owfeed.org/owfeed/internal/usign"
 )
 
 // Format names a package manager.

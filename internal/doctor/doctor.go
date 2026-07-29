@@ -18,16 +18,16 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/VizzleTF/owfeed/internal/apk"
-	"github.com/VizzleTF/owfeed/internal/config"
-	"github.com/VizzleTF/owfeed/internal/feedindex"
-	"github.com/VizzleTF/owfeed/internal/index"
-	"github.com/VizzleTF/owfeed/internal/ipkindex"
-	"github.com/VizzleTF/owfeed/internal/keys"
-	"github.com/VizzleTF/owfeed/internal/lock"
-	"github.com/VizzleTF/owfeed/internal/meta"
-	"github.com/VizzleTF/owfeed/internal/snippet"
-	"github.com/VizzleTF/owfeed/internal/usign"
+	"owfeed.org/owfeed/internal/apk"
+	"owfeed.org/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/feedindex"
+	"owfeed.org/owfeed/internal/index"
+	"owfeed.org/owfeed/internal/ipkindex"
+	"owfeed.org/owfeed/internal/keys"
+	"owfeed.org/owfeed/internal/lock"
+	"owfeed.org/owfeed/internal/meta"
+	"owfeed.org/owfeed/internal/snippet"
+	"owfeed.org/owfeed/internal/usign"
 )
 
 // Severity orders findings.

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/VizzleTF/owfeed/internal/apk"
-	"github.com/VizzleTF/owfeed/internal/testapk"
+	"owfeed.org/owfeed/internal/apk"
+	"owfeed.org/owfeed/internal/testapk"
 )
 
 // The version grammar in this package is a port of apk-tools' tokeniser, and a port

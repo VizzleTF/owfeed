@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/VizzleTF/owfeed/internal/release"
-	"github.com/VizzleTF/owfeed/internal/usign"
+	"owfeed.org/owfeed/internal/release"
+	"owfeed.org/owfeed/internal/usign"
 )
 
 // stringList collects a repeatable flag.

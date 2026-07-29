@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/VizzleTF/owfeed/internal/ipk"
+	"owfeed.org/owfeed/internal/ipk"
 )
 
 // 24.10 is opkg, and the only useful proof that a container is right is opkg

@@ -8,14 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/VizzleTF/owfeed/internal/apk"
-	"github.com/VizzleTF/owfeed/internal/build"
-	"github.com/VizzleTF/owfeed/internal/config"
-	"github.com/VizzleTF/owfeed/internal/doctor"
-	"github.com/VizzleTF/owfeed/internal/index"
-	"github.com/VizzleTF/owfeed/internal/keys"
-	"github.com/VizzleTF/owfeed/internal/lock"
-	"github.com/VizzleTF/owfeed/internal/testapk"
+	"owfeed.org/owfeed/internal/apk"
+	"owfeed.org/owfeed/internal/build"
+	"owfeed.org/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/doctor"
+	"owfeed.org/owfeed/internal/index"
+	"owfeed.org/owfeed/internal/keys"
+	"owfeed.org/owfeed/internal/lock"
+	"owfeed.org/owfeed/internal/testapk"
 )
 
 const pkgName = "luci-app-demo"

@@ -7,8 +7,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/VizzleTF/owfeed/internal/config"
-	"github.com/VizzleTF/owfeed/internal/meta"
+	"owfeed.org/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/meta"
 )
 
 // ResolveVersion produces the version for a package, from either the literal in the

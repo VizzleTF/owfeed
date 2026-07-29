@@ -5,9 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/VizzleTF/owfeed/internal/config"
-	"github.com/VizzleTF/owfeed/internal/keys"
-	"github.com/VizzleTF/owfeed/internal/usign"
+	"owfeed.org/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/keys"
+	"owfeed.org/owfeed/internal/usign"
 )
 
 func (a *app) keygen(args []string) error {

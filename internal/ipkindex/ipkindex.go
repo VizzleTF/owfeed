@@ -29,7 +29,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/VizzleTF/owfeed/internal/usign"
+	"owfeed.org/owfeed/internal/usign"
 )
 
 // File names in a published directory.

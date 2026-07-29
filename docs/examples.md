@@ -302,7 +302,7 @@ own.
 
 The mapping from GOARCH to OpenWrt architectures belongs in your fetch script, not in owfeed — it is
 a property of your toolchain, not of packaging. A worked one is in
-[VizzleTF/owfeed-packages](https://github.com/VizzleTF/owfeed-packages), a live feed built this way.
+[owfeed/owfeed-packages](https://github.com/owfeed/owfeed-packages), a live feed built this way.
 
 ---
 
@@ -352,4 +352,4 @@ One tree, two feeds under one URL. A 24.10 router never sees `luci-app-mine-next
 line's index at all, which is the point of saying which lines a package belongs to rather than
 publishing everything everywhere and hoping dependencies sort it out.
 
-Verified on real routers with [owlab](https://github.com/VizzleTF/owlab), one per manager.
+Verified on real routers with [owlab](https://github.com/owfeed/owlab), one per manager.

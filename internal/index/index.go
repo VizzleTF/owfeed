@@ -25,8 +25,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/VizzleTF/owfeed/internal/apk"
-	"github.com/VizzleTF/owfeed/internal/keys"
+	"owfeed.org/owfeed/internal/apk"
+	"owfeed.org/owfeed/internal/keys"
 )
 
 // File names produced in a published directory.

@@ -4,9 +4,9 @@ import (
 	"context"
 	"flag"
 
-	"github.com/VizzleTF/owfeed/internal/config"
-	"github.com/VizzleTF/owfeed/internal/lock"
-	"github.com/VizzleTF/owfeed/internal/smoke"
+	"owfeed.org/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/lock"
+	"owfeed.org/owfeed/internal/smoke"
 )
 
 // smoke is the only check that asks apk rather than telling it. Everything else

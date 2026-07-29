@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"path/filepath"
 
-	"github.com/VizzleTF/owfeed/internal/arch"
-	"github.com/VizzleTF/owfeed/internal/config"
-	"github.com/VizzleTF/owfeed/internal/lock"
+	"owfeed.org/owfeed/internal/arch"
+	"owfeed.org/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/lock"
 )
 
 func (a *app) lock(ctx context.Context, args []string) error {

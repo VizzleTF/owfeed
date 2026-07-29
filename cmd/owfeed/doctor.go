@@ -5,13 +5,13 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/VizzleTF/owfeed/internal/apk"
-	"github.com/VizzleTF/owfeed/internal/config"
-	"github.com/VizzleTF/owfeed/internal/lock"
-	"github.com/VizzleTF/owfeed/internal/usign"
+	"owfeed.org/owfeed/internal/apk"
+	"owfeed.org/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/lock"
+	"owfeed.org/owfeed/internal/usign"
 
-	"github.com/VizzleTF/owfeed/internal/doctor"
-	"github.com/VizzleTF/owfeed/internal/keys"
+	"owfeed.org/owfeed/internal/doctor"
+	"owfeed.org/owfeed/internal/keys"
 )
 
 func (a *app) doctor(ctx context.Context, args []string) error {

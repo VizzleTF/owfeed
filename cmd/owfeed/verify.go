@@ -5,9 +5,9 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/VizzleTF/owfeed/internal/config"
-	"github.com/VizzleTF/owfeed/internal/smoke"
-	"github.com/VizzleTF/owfeed/internal/verify"
+	"owfeed.org/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/smoke"
+	"owfeed.org/owfeed/internal/verify"
 )
 
 // verify looks at the feed from outside, over the URL the install snippet gives.

@@ -300,7 +300,7 @@ payload — если бы могли, пакет был бы `noarch`, — по�
 
 Соответствие GOARCH → OpenWrt-архитектуры живёт в вашем fetch-скрипте, а не в owfeed: это свойство
 вашего тулчейна, а не упаковки. Рабочий пример — в
-[VizzleTF/owfeed-packages](https://github.com/VizzleTF/owfeed-packages), живом фиде, собранном
+[owfeed/owfeed-packages](https://github.com/owfeed/owfeed-packages), живом фиде, собранном
 именно так.
 
 ---
@@ -349,4 +349,4 @@ owfeed build && owfeed sign && owfeed index && owfeed doctor
 в индексе той линии. Ради этого линии и указываются явно, а не «публикуем всё везде и надеемся, что
 зависимости разрулят».
 
-Проверено на настоящих роутерах через [owlab](https://github.com/VizzleTF/owlab), по одному на менеджер.
+Проверено на настоящих роутерах через [owlab](https://github.com/owfeed/owlab), по одному на менеджер.

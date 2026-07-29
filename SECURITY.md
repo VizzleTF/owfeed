@@ -2,7 +2,7 @@
 
 ## Reporting
 
-Open a [private advisory](https://github.com/VizzleTF/owfeed/security/advisories/new). Please do not
+Open a [private advisory](https://github.com/owfeed/owfeed/security/advisories/new). Please do not
 open a public issue for anything that would let someone publish under a feed's key.
 
 ## What owfeed protects, and what it does not
@@ -50,8 +50,8 @@ diffs.
 ## Verifying a download by hand
 
 ```sh
-gh attestation verify owfeed-linux-amd64 -R VizzleTF/owfeed \
-  --signer-workflow VizzleTF/owfeed/.github/workflows/release.yml
+gh attestation verify owfeed-linux-amd64 -R owfeed/owfeed \
+  --signer-workflow owfeed/owfeed/.github/workflows/release.yml
 ```
 
 A `SHA256SUMS` file is published too, and on its own it is not a check: it is served

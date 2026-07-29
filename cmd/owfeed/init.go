@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/VizzleTF/owfeed/internal/config"
-	"github.com/VizzleTF/owfeed/internal/meta"
-	"github.com/VizzleTF/owfeed/internal/schema"
-	"github.com/VizzleTF/owfeed/internal/snippet"
+	"owfeed.org/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/meta"
+	"owfeed.org/owfeed/internal/schema"
+	"owfeed.org/owfeed/internal/snippet"
 )
 
 func (a *app) init_(args []string) error {
@@ -138,7 +138,7 @@ func scaffold(name, url string) string {
 	// It describes shape, not the rules: the validator still rejects keys the schema
 	// permits, and remains the specification. See internal/schema.
 	return fmt.Sprintf(`# yaml-language-server: $schema=%s
-# Reference: https://github.com/VizzleTF/owfeed/blob/main/docs/examples.md
+# Reference: https://github.com/owfeed/owfeed/blob/main/docs/examples.md
 version: 1
 
 feed:

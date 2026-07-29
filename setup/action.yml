@@ -1,7 +1,7 @@
 name: Set up owfeed
 description: Install a verified owfeed binary and put it on PATH.
 
-# Why this exists rather than `go install github.com/VizzleTF/owfeed/cmd/owfeed@sha`:
+# Why this exists rather than `go install owfeed.org/owfeed/cmd/owfeed@sha`:
 # that compiles the tool on every job of a 35-architecture matrix, needs a Go
 # toolchain the feed itself has no use for, and verifies nothing -- `go install`
 # trusts whatever the module proxy returns for that revision. This downloads one
@@ -80,11 +80,11 @@ runs:
         # returned on an exact match.
         if [ "$OWFEED_VERSION" = "latest" ]; then
           echo "::warning::owfeed pinned to \"latest\"; pin a tag so the tool that signs your feed cannot change between runs"
-          gh release download --repo VizzleTF/owfeed --pattern "$asset" --dir "$dir" --clobber
-          tag=$(gh release view --repo VizzleTF/owfeed --json tagName --jq .tagName)
+          gh release download --repo owfeed/owfeed --pattern "$asset" --dir "$dir" --clobber
+          tag=$(gh release view --repo owfeed/owfeed --json tagName --jq .tagName)
         else
           tag="$OWFEED_VERSION"
-          gh release download "$tag" --repo VizzleTF/owfeed --pattern "$asset" --dir "$dir" --clobber
+          gh release download "$tag" --repo owfeed/owfeed --pattern "$asset" --dir "$dir" --clobber
         fi
 
         # Verify BEFORE the binary is ever executed or put on PATH. A check that
@@ -99,13 +99,13 @@ runs:
           # nobody can see ran is one nobody believes ran, so it is captured and
           # echoed either way.
           if out=$(gh attestation verify "$dir/$asset" \
-              --repo VizzleTF/owfeed \
-              --signer-workflow VizzleTF/owfeed/.github/workflows/release.yml 2>&1); then
+              --repo owfeed/owfeed \
+              --signer-workflow owfeed/owfeed/.github/workflows/release.yml 2>&1); then
             echo "$out"
-            echo "verified $asset as built by VizzleTF/owfeed .github/workflows/release.yml"
+            echo "verified $asset as built by owfeed/owfeed .github/workflows/release.yml"
           else
             echo "$out"
-            echo "::error::$asset does not verify as built by VizzleTF/owfeed's release workflow -- refusing to install it"
+            echo "::error::$asset does not verify as built by owfeed/owfeed's release workflow -- refusing to install it"
             rm -f "$dir/$asset"
             exit 1
           fi

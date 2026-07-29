@@ -20,9 +20,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/VizzleTF/owfeed/internal/apk"
-	"github.com/VizzleTF/owfeed/internal/config"
-	"github.com/VizzleTF/owfeed/internal/meta"
+	"owfeed.org/owfeed/internal/apk"
+	"owfeed.org/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/meta"
 )
 
 // Request is one package to build.
