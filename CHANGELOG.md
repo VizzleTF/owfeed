@@ -2,7 +2,7 @@
 
 Dates are when the tag was cut. Anything not listed is documentation or tests.
 
-## Unreleased
+## v0.3.0 — 2026-07-29
 
 - **Added:** `signing.sign-packages: false` now does what it says. The field was in the
   config and in the published schema, but nothing read it -- `owfeed sign` signed every
