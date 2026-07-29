@@ -1,0 +1,11 @@
+name: probe
+on:
+  workflow_call:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    environment: feed
+    steps:
+      - run: |
+          echo "PROBE_RESULT=[${{ vars.PROBE }}]"
+          echo "repository=${{ github.repository }}"
