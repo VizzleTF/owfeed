@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>owfeed — signed OpenWrt package feeds</title>
+<meta name="description" content="Build an OpenWrt package, test it on a real router, sign it, and publish a feed users can apk add. Two tools, one directory format.">
+<link rel="canonical" href="https://owfeed.org/">
+<link rel="alternate" hreflang="en" href="https://owfeed.org/">
+<link rel="alternate" hreflang="ru" href="https://owfeed.org/ru/">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<div class="shell">
+
+<aside class="side">
+<a class="brand" href="/"><b>owfeed</b>.org</a>
+<p class="tagline">Signed package feeds for OpenWrt, on both release lines.</p>
+<nav>
+<h3>Start</h3>
+<ul>
+  <li><a href="/" class="here">Overview</a></li>
+  <li><a href="/install/">Install a package</a></li>
+</ul>
+<h3>Publish</h3>
+<ul>
+  <li><a href="/cookbook/">Ship your package</a></li>
+  <li><a href="/reference/">Commands and config</a></li>
+  <li><a href="/problems/">When something breaks</a></li>
+</ul>
+<h3>Source</h3>
+<ul class="source">
+  <li><a href="https://github.com/owfeed/owlab">owlab</a></li>
+  <li><a href="https://github.com/owfeed/owfeed">owfeed</a></li>
+  <li><a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a></li>
+</ul>
+<p class="lang"><span class="here">EN</span> · <a href="/ru/">RU</a></p>
+</nav>
+</aside>
+
+<main class="page">
+
+<h1>Ship an OpenWrt package without building it 35 times</h1>
+<p class="lead">Two Go binaries. One develops and tests your package on throwaway routers; the
+other signs it and turns a directory into a feed users can <code>apk add</code>. They work on
+both release lines — apk on 25.12 and later, opkg on 24.10 and earlier.</p>
+
+<h2>Which of these are you?</h2>
+<div class="forks">
+  <a class="fork" href="/install/">
+    <h4>A router owner</h4>
+    <p>You want to install something from a feed. Three commands.</p>
+  </a>
+  <a class="fork" href="/cookbook/">
+    <h4>A package author</h4>
+    <p>You wrote a LuCI app or theme and want people to install it.</p>
+  </a>
+  <a class="fork" href="/reference/">
+    <h4>Running a feed</h4>
+    <p>You need the commands, the config fields and the terms.</p>
+  </a>
+</div>
+
+<h2>The two tools</h2>
+
+<table>
+<tr><th>Tool</th><th>Answers</th><th>Holds keys</th></tr>
+<tr><td><code>owlab</code></td><td>Does the package work? Starts real OpenWrt routers in Docker, installs your package, checks the page loads.</td><td>Never</td></tr>
+<tr><td><code>owfeed</code></td><td>Can anyone trust these bytes? Signs packages, builds a signed index, checks the result before it goes out.</td><td>Yes</td></tr>
+</table>
+
+<p>Neither depends on the other. They agree on one thing: a directory called <code>dist/</code>
+with one subdirectory per architecture. Anything that fills it correctly works with everything
+downstream — including a plain OpenWrt SDK build.</p>
+
+<h2>Install</h2>
+
+<pre>go install owfeed.org/owlab/cmd/owlab@latest
+go install owfeed.org/owfeed/cmd/owfeed@latest</pre>
+
+<p>Or download a release binary and check it against the attestation GitHub produced for it:</p>
+
+<pre>gh release download v0.2.1 -R owfeed/owfeed -p 'owfeed-linux-amd64'
+gh attestation verify owfeed-linux-amd64 -R owfeed/owfeed \
+  --signer-workflow owfeed/owfeed/.github/workflows/release.yml
+chmod +x owfeed-linux-amd64 &amp;&amp; sudo mv owfeed-linux-amd64 /usr/local/bin/owfeed</pre>
+
+<p>In GitHub Actions, <code>owfeed/owfeed/setup@v0.2.1</code> and
+<code>owfeed/owlab/setup@v0.5.1</code> do that check for you.</p>
+
+<h3>What you need</h3>
+
+<table>
+<tr><th>For</th><th>Requirement</th></tr>
+<tr><td><code>owlab</code>, anything</td><td>Docker, Podman, OrbStack, Colima or Rancher Desktop, with Compose v2</td></tr>
+<tr><td><code>owlab</code> with <code>fidelity: vm</code></td><td>QEMU as well — <code>brew install qemu</code></td></tr>
+<tr><td><code>owfeed build/sign/index/publish</code></td><td>Nothing. The apk toolchain is fetched from the OpenWrt SDK and verified against a pinned key</td></tr>
+<tr><td><code>owfeed smoke</code>, and <code>owfeed build</code> on macOS</td><td>Docker</td></tr>
+</table>
+
+<h2>Do you need a feed at all?</h2>
+
+<p>Probably not, and it is worth deciding before you build one.</p>
+
+<p>A key in <code>/etc/apk/keys</code> is a trust anchor for <strong>every package name</strong>,
+not just yours. A feed whose key leaks can offer a higher version of <code>dropbear</code> and
+win, and apk has no revocation.</p>
+
+<table>
+<tr><th>Your situation</th><th>What to do</th></tr>
+<tr><td>One package people install occasionally</td><td>Publish signed release artifacts. <code>owfeed release</code> does that, and your users check one signature.</td></tr>
+<tr><td>Several packages, or you want <code>apk upgrade</code> to work</td><td>A feed. It is the only thing that upgrades, because apk upgrades from an index.</td></tr>
+<tr><td>You want the second without running one</td><td>Ask <a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a> to carry your package.</td></tr>
+</table>
+
+<h2>Why not the OpenWrt SDK action?</h2>
+
+<p><code>openwrt/gh-action-sdk</code> compiles a package from source. owfeed packages one that is
+already built. Most third-party packages — themes, LuCI apps, scripts, static binaries — do not
+need compiling at all, and for those the SDK is 35 builds to produce something a single pass
+could have made.</p>
+
+<table>
+<tr><th></th><th>gh-action-sdk</th><th>owfeed</th></tr>
+<tr><td>Noarch across 35 architectures</td><td>35 SDK builds</td><td>one pass, ~25 seconds</td></tr>
+<tr><td>Signed index</td><td>—</td><td>apk and opkg</td></tr>
+<tr><td>Signing key</td><td>written into the build tree</td><td>never enters the build job</td></tr>
+<tr><td>Proof it installs</td><td>—</td><td><code>owfeed smoke</code>, on a real image</td></tr>
+</table>
+
+<p>If your package is compiled C, use the SDK — then hand its output to owfeed.</p>
+
+<h2>Read next</h2>
+<ul>
+  <li><a href="/cookbook/">Ship your package</a> — build, test, sign, publish, step by step</li>
+  <li><a href="/reference/">Commands and config</a> — every command, the config fields, a glossary</li>
+  <li><a href="/schema/v1.json"><code>schema/v1.json</code></a> — the <code>owfeed.yml</code> schema, generated from the code</li>
+  <li><a href="https://github.com/owfeed/owfeed/blob/main/docs/ECOSYSTEM.md">ECOSYSTEM.md</a> — where the boundary between the tools runs, and why</li>
+  <li><a href="https://github.com/owfeed/owfeed/blob/main/docs/apk-behaviour.md">apk-behaviour.md</a> — what apk and opkg actually do, with reproductions</li>
+</ul>
+
+<footer>
+<p>owlab is GPL-2.0-only · owfeed is Apache-2.0 · OpenWrt is a registered trademark of the
+Software Freedom Conservancy; this project is not affiliated with it.</p>
+</footer>
+
+</main>
+</div>
+</body>
+</html>

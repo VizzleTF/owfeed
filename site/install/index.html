@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Install a package from a feed — owfeed</title>
+<meta name="description" content="Add a signed OpenWrt package feed to your router and install from it. Instructions for apk (25.12 and later) and opkg (24.10 and earlier).">
+<link rel="canonical" href="https://owfeed.org/install/">
+<link rel="alternate" hreflang="en" href="https://owfeed.org/install/">
+<link rel="alternate" hreflang="ru" href="https://owfeed.org/install/ru/">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<div class="shell">
+
+<aside class="side">
+<a class="brand" href="/"><b>owfeed</b>.org</a>
+<p class="tagline">Signed package feeds for OpenWrt, on both release lines.</p>
+<nav>
+<h3>Start</h3>
+<ul>
+  <li><a href="/">Overview</a></li>
+  <li><a href="/install/" class="here">Install a package</a></li>
+</ul>
+<h3>Publish</h3>
+<ul>
+  <li><a href="/cookbook/">Ship your package</a></li>
+  <li><a href="/reference/">Commands and config</a></li>
+  <li><a href="/problems/">When something breaks</a></li>
+</ul>
+<h3>Source</h3>
+<ul class="source">
+  <li><a href="https://github.com/owfeed/owlab">owlab</a></li>
+  <li><a href="https://github.com/owfeed/owfeed">owfeed</a></li>
+  <li><a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a></li>
+</ul>
+<p class="lang"><span class="here">EN</span> · <a href="/install/ru/">RU</a></p>
+</nav>
+</aside>
+
+<main class="page">
+
+<p class="kicker">For router owners</p>
+<h1>Install a package from a feed</h1>
+<p class="lead">Three steps: trust the feed's key, add the repository, install by name. The
+commands differ by release — 25.12 and later use apk, 24.10 and earlier use opkg. Check yours
+with <code>cat /etc/openwrt_release</code>.</p>
+
+<div class="note"><strong>Read this before you paste anything.</strong> Installing a feed's key
+tells your router to trust it for <em>every</em> package name, not only the one you want. A feed
+whose key leaks can offer a higher version of <code>dropbear</code> and win. apk has no
+revocation. Install a key because you trust who publishes it, not because a page told you to.</div>
+
+<h2>OpenWrt 25.12 and later (apk)</h2>
+
+<pre># A stock image cannot fetch over HTTPS until these are installed.
+apk add ca-bundle libustream-mbedtls
+
+# 1. Trust the key
+wget https://repo.owfeed.org/owfeed-packages.pem \
+  -O /etc/apk/keys/owfeed-packages.pem
+
+# 2. Add the repository — this is the URL of the index file itself
+echo "https://repo.owfeed.org/releases/25.12/$(cat /etc/apk/arch)/packages.adb" \
+  > /etc/apk/repositories.d/owfeed-packages.list
+
+# 3. Keep both across a firmware upgrade
+printf '%s\n' /etc/apk/keys/owfeed-packages.pem \
+  /etc/apk/repositories.d/owfeed-packages.list >> /etc/sysupgrade.conf
+
+apk update &amp;&amp; apk add podkop-updater</pre>
+
+<p>Step 3 is not optional. Neither file survives sysupgrade on its own, and a missing key is the
+most common cause of <code>UNTRUSTED signature</code> after a firmware upgrade.</p>
+
+<h2>OpenWrt 24.10 and earlier (opkg)</h2>
+
+<pre># 1. Trust the key. The FILE NAME must be the key id — opkg looks it up by that.
+wget https://repo.owfeed.org/9040356b214084da \
+  -O /etc/opkg/keys/9040356b214084da
+
+# 2. Add the repository — here it is the URL of the DIRECTORY
+echo "src/gz owfeed-packages https://repo.owfeed.org/releases/24.10/$(. /etc/openwrt_release; echo $DISTRIB_ARCH)" \
+  >> /etc/opkg/customfeeds.conf
+
+opkg update &amp;&amp; opkg install podkop-updater</pre>
+
+<h2>Three things that will bite you</h2>
+
+<table>
+<tr><th>Do not</th><th>Why</th></tr>
+<tr><td><code>apk add ./package.apk</code></td><td>Installing the file directly writes a pin on its content hash into <code>/etc/apk/world</code>. That file survives sysupgrade, and the package then never upgrades from the feed again. Add the repository and install by name.</td></tr>
+<tr><td>Expect Attended Sysupgrade to carry packages over</td><td><code>owut</code> forwards no custom repositories, and the sysupgrade server's <code>repository_allow_list</code> is empty by default, which denies everything. Re-add the feed after the upgrade.</td></tr>
+<tr><td>Use a feed URL that redirects</td><td>apk does not follow 30x responses (<a href="https://github.com/openwrt/openwrt/issues/17180">openwrt#17180</a>). If the feed moved, use the new URL directly.</td></tr>
+</table>
+
+<h2>What the signature does and does not mean</h2>
+
+<p>A feed signs its own index, and the index is where trust comes from: apk verifies the index
+against the key you installed, then checks each package against the hash the index recorded.</p>
+
+<p>What that says is <em>this feed vouches for these bytes</em>. What it does not say is who wrote
+the software. A well-run feed verifies each author's own signature against a pinned key before
+adding its own — <a href="https://github.com/owfeed/owfeed-packages/blob/main/CONTRIBUTING.md">owfeed-packages
+documents exactly what it checks</a>. Read that page for any feed before you trust it.</p>
+
+<p>apk signature blocks are additive, so a package can carry both the author's signature and the
+feed's. Installing the author's public key too lets you verify them directly.</p>
+
+<h2>Removing a feed</h2>
+
+<pre># apk
+rm /etc/apk/repositories.d/owfeed-packages.list
+rm /etc/apk/keys/owfeed-packages.pem
+apk update
+
+# opkg — remove the src/gz line, then
+rm /etc/opkg/keys/9040356b214084da
+opkg update</pre>
+
+<p>Packages already installed stay. They stop receiving upgrades.</p>
+
+<footer>
+<p>The feed used in these examples is
+<a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a>. Other feeds publish
+their own key and URL; the shape of the commands is the same.</p>
+</footer>
+
+</main>
+</div>
+</body>
+</html>

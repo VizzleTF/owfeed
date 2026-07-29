@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>owfeed — подписанные фиды пакетов для OpenWrt</title>
+<meta name="description" content="Собрать пакет для OpenWrt, проверить на живом роутере, подписать и опубликовать фид, из которого его поставят через apk add. Два инструмента, один формат каталога.">
+<link rel="canonical" href="https://owfeed.org/ru/">
+<link rel="alternate" hreflang="en" href="https://owfeed.org/">
+<link rel="alternate" hreflang="ru" href="https://owfeed.org/ru/">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<div class="shell">
+
+<aside class="side">
+<a class="brand" href="/ru/"><b>owfeed</b>.org</a>
+<p class="tagline">Подписанные фиды пакетов для OpenWrt, на обеих линиях релизов.</p>
+<nav>
+<h3>Начало</h3>
+<ul>
+  <li><a href="/ru/" class="here">Обзор</a></li>
+  <li><a href="/install/ru/">Поставить пакет</a></li>
+</ul>
+<h3>Публикация</h3>
+<ul>
+  <li><a href="/cookbook/ru/">Выпустить пакет</a></li>
+  <li><a href="/reference/ru/">Команды и конфиг</a></li>
+  <li><a href="/problems/ru/">Если сломалось</a></li>
+</ul>
+<h3>Исходники</h3>
+<ul class="source">
+  <li><a href="https://github.com/owfeed/owlab">owlab</a></li>
+  <li><a href="https://github.com/owfeed/owfeed">owfeed</a></li>
+  <li><a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a></li>
+</ul>
+<p class="lang"><a href="/">EN</a> · <span class="here">RU</span></p>
+</nav>
+</aside>
+
+<main class="page">
+
+<h1>Выпустить пакет для OpenWrt, не собирая его 35 раз</h1>
+<p class="lead">Два бинарника на Go. Первый поднимает одноразовые роутеры и проверяет на них
+пакет, второй подписывает его и превращает каталог в фид, из которого ставят через
+<code>apk add</code>. Обе линии релизов: apk на 25.12 и новее, opkg на 24.10 и старее.</p>
+
+<h2>Кто вы?</h2>
+<div class="forks">
+  <a class="fork" href="/install/ru/">
+    <h4>Владелец роутера</h4>
+    <p>Хотите поставить пакет из фида. Это три команды.</p>
+  </a>
+  <a class="fork" href="/cookbook/ru/">
+    <h4>Автор пакета</h4>
+    <p>Написали приложение LuCI или тему и хотите, чтобы её ставили.</p>
+  </a>
+  <a class="fork" href="/reference/ru/">
+    <h4>Держите фид</h4>
+    <p>Нужны команды, поля конфига и словарь терминов.</p>
+  </a>
+</div>
+
+<h2>Два инструмента</h2>
+
+<table>
+<tr><th>Инструмент</th><th>Отвечает на вопрос</th><th>Держит ключи</th></tr>
+<tr><td><code>owlab</code></td><td>Работает ли пакет? Поднимает живые роутеры OpenWrt в Docker, ставит пакет, проверяет, что страница открывается.</td><td>Никогда</td></tr>
+<tr><td><code>owfeed</code></td><td>Можно ли доверять этим байтам? Подписывает пакеты, собирает подписанный индекс, проверяет результат перед публикацией.</td><td>Да</td></tr>
+</table>
+
+<p>Друг от друга они не зависят. Договорённость одна: каталог <code>dist/</code>, внутри
+подкаталог на каждую архитектуру. Всё, что заполняет его правильно, работает со всем
+остальным, включая обычную сборку в OpenWrt SDK.</p>
+
+<h2>Установка</h2>
+
+<pre>go install owfeed.org/owlab/cmd/owlab@latest
+go install owfeed.org/owfeed/cmd/owfeed@latest</pre>
+
+<p>Или скачайте готовый бинарь и сверьте его с аттестацией, которую выпустил сам GitHub:</p>
+
+<pre>gh release download v0.2.1 -R owfeed/owfeed -p 'owfeed-linux-amd64'
+gh attestation verify owfeed-linux-amd64 -R owfeed/owfeed \
+  --signer-workflow owfeed/owfeed/.github/workflows/release.yml
+chmod +x owfeed-linux-amd64 &amp;&amp; sudo mv owfeed-linux-amd64 /usr/local/bin/owfeed</pre>
+
+<p>В GitHub Actions эту проверку делают за вас <code>owfeed/owfeed/setup@v0.2.1</code> и
+<code>owfeed/owlab/setup@v0.5.1</code>.</p>
+
+<h3>Что понадобится</h3>
+
+<table>
+<tr><th>Для чего</th><th>Что нужно</th></tr>
+<tr><td><code>owlab</code>, что угодно</td><td>Docker, Podman, OrbStack, Colima или Rancher Desktop с Compose v2</td></tr>
+<tr><td><code>owlab</code> с <code>fidelity: vm</code></td><td>Ещё QEMU: <code>brew install qemu</code></td></tr>
+<tr><td><code>owfeed build/sign/index/publish</code></td><td>Ничего. Тулчейн apk скачивается из OpenWrt SDK и сверяется с зашитым ключом</td></tr>
+<tr><td><code>owfeed smoke</code>, а на macOS ещё и <code>owfeed build</code></td><td>Docker</td></tr>
+</table>
+
+<h2>А фид вообще нужен?</h2>
+
+<p>Скорее всего нет, и решить это лучше до того, как вы его построите.</p>
+
+<p>Ключ в <code>/etc/apk/keys</code> — это якорь доверия для <strong>любого имени пакета</strong>,
+не только вашего. Утёкший ключ фида позволяет предложить версию <code>dropbear</code> повыше и
+выиграть разрешение зависимостей. Отзыва ключей в apk нет.</p>
+
+<table>
+<tr><th>Ситуация</th><th>Что делать</th></tr>
+<tr><td>Один пакет, который ставят изредка</td><td>Публикуйте подписанные релизы. Это делает <code>owfeed release</code>, а пользователю нужно проверить одну подпись.</td></tr>
+<tr><td>Несколько пакетов или нужен работающий <code>apk upgrade</code></td><td>Тогда фид. Больше ничего не умеет обновлять: apk обновляется только из индекса.</td></tr>
+<tr><td>Нужно второе, но держать фид не хочется</td><td>Попросите <a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a> взять ваш пакет к себе.</td></tr>
+</table>
+
+<h2>Чем это отличается от SDK-экшена</h2>
+
+<p><code>openwrt/gh-action-sdk</code> компилирует пакет из исходников. owfeed пакует уже
+собранный. Большинству сторонних пакетов — темам, приложениям LuCI, скриптам, статическим
+бинарям — компиляция не нужна вовсе, и для них SDK означает 35 сборок ради того, что делается
+одним проходом.</p>
+
+<table>
+<tr><th></th><th>gh-action-sdk</th><th>owfeed</th></tr>
+<tr><td>Noarch на 35 архитектур</td><td>35 сборок в SDK</td><td>один проход, около 25 секунд</td></tr>
+<tr><td>Подписанный индекс</td><td>—</td><td>apk и opkg</td></tr>
+<tr><td>Ключ подписи</td><td>пишется в дерево сборки</td><td>в job сборки не попадает никогда</td></tr>
+<tr><td>Доказательство, что ставится</td><td>—</td><td><code>owfeed smoke</code> на живом образе</td></tr>
+</table>
+
+<p>Если пакет — это скомпилированный C, берите SDK, а результат отдайте owfeed.</p>
+
+<h2>Читать дальше</h2>
+<ul>
+  <li><a href="/cookbook/ru/">Выпустить пакет</a> — собрать, проверить, подписать, опубликовать</li>
+  <li><a href="/reference/ru/">Команды и конфиг</a> — все команды, поля конфигов, словарь</li>
+  <li><a href="/schema/v1.json"><code>schema/v1.json</code></a> — схема <code>owfeed.yml</code>, генерируется из кода</li>
+  <li><a href="https://github.com/owfeed/owfeed/blob/main/docs/DESIGN_ru.md">DESIGN_ru.md</a> — зачем всё это устроено именно так</li>
+  <li><a href="https://github.com/owfeed/owfeed/blob/main/docs/apk-behaviour.md">apk-behaviour.md</a> — что apk и opkg делают на самом деле, с воспроизведением</li>
+</ul>
+
+<footer>
+<p>owlab под GPL-2.0-only, owfeed под Apache-2.0. OpenWrt — зарегистрированная торговая марка
+Software Freedom Conservancy; проект с ней не связан.</p>
+</footer>
+
+</main>
+</div>
+</body>
+</html>

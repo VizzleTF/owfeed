@@ -1,6 +1,7 @@
 name: Pages
 
-# Publishes owfeed.org: the config JSON Schema, and an index pointing at the docs.
+# Publishes owfeed.org: the site in site/, the config JSON Schema, and the
+# go-import pages the module paths depend on.
 #
 # The schema is the part that has to be here. `owfeed init` writes its URL into the
 # modeline of every config it scaffolds, so an editor fetches it -- and a modeline
@@ -15,8 +16,8 @@ on:
   push:
     branches: [main]
     paths:
+      - 'site/**'
       - 'schema/**'
-      - 'cookbook/**'
       - 'docs/**'
       - 'README.md'
       - 'README_ru.md'
@@ -52,11 +53,15 @@ jobs:
       - name: Assemble the site
         run: |
           set -eu
-          mkdir -p site/schema site/docs
-          cp schema/v1.json site/schema/v1.json
-          cp -r cookbook site/cookbook
-          cp docs/*.md site/docs/
-          cp README.md README_ru.md site/docs/
+          # site/ is the site: every page and the stylesheet are checked in and
+          # served as they are. What follows is only the parts that cannot be --
+          # the schema, which is generated from the code, the docs, which live
+          # beside what they describe, and the go-import pages.
+          mkdir -p _site/schema _site/docs
+          cp -r site/. _site/
+          cp schema/v1.json _site/schema/v1.json
+          cp docs/*.md _site/docs/
+          cp README.md README_ru.md _site/docs/
 
           # The vanity import paths. `go install owfeed.org/owfeed/cmd/owfeed@latest`
           # fetches https://owfeed.org/owfeed?go-get=1 and reads the meta tag below to
@@ -74,8 +79,8 @@ jobs:
           # page, because a URL that only answers a robot is a URL somebody will report
           # as broken.
           for tool in owfeed owlab; do
-            mkdir -p "site/$tool"
-            cat > "site/$tool/index.html" <<HTML
+            mkdir -p "_site/$tool"
+            cat > "_site/$tool/index.html" <<HTML
           <!doctype html>
           <meta charset="utf-8">
           <meta name="go-import" content="owfeed.org/$tool git https://github.com/owfeed/$tool">
@@ -87,43 +92,32 @@ jobs:
           HTML
           done
 
-          # Pages serves what it is given; nothing here renders Markdown, so the
-          # index links to GitHub for prose and serves the schema itself.
-          cat > site/index.html <<'HTML'
-          <!doctype html>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>owfeed</title>
-          <style>
-            :root { color-scheme: light dark; }
-            body { max-width: 44rem; margin: 4rem auto; padding: 0 1.5rem;
-                   font: 16px/1.6 system-ui, sans-serif; }
-            code { font-family: ui-monospace, monospace; }
-            h1 { margin-bottom: 0; }
-            p.lead { margin-top: .25rem; opacity: .75; }
-            ul { padding-left: 1.2rem; }
-            li { margin: .4rem 0; }
-          </style>
-          <h1>owfeed</h1>
-          <p class="lead">A signed OpenWrt package feed from a directory. apk for 25.12 and later,
-          opkg for 24.10 and earlier.</p>
-          <ul>
-            <li><a href="/cookbook/"><strong>Cookbook</strong></a> — build, test, sign and publish an
-                OpenWrt package, step by step (<a href="/cookbook/ru/">по-русски</a>)</li>
-          <li><a href="/schema/v1.json"><code>schema/v1.json</code></a> — the
-                <code>owfeed.yml</code> schema, generated from the code</li>
-            <li><a href="https://github.com/owfeed/owfeed">owfeed</a> — build, sign, index, publish</li>
-            <li><a href="https://github.com/owfeed/owlab">owlab</a> — develop and prove a package works</li>
-            <li><a href="https://github.com/owfeed/owfeed/blob/main/docs/ECOSYSTEM.md">ECOSYSTEM.md</a>
-                — where the boundary between them runs</li>
-            <li><a href="https://github.com/owfeed/owfeed/blob/main/docs/artifact-contract.md">artifact contract</a>
-                · <a href="https://github.com/owfeed/owfeed/blob/main/docs/manifest-format.md">manifest format</a></li>
-          </ul>
-          HTML
+          # Jekyll would delete /assets/ and every path beginning with an
+          # underscore. Pages runs it unless this file is present.
+          touch _site/.nojekyll
+
+      # A sidebar link that 404s is the failure this site can produce most
+      # easily: the navigation is repeated in every page by hand, so one typo is
+      # invisible until somebody clicks it.
+      - name: Every internal link resolves to a file
+        run: |
+          set -eu
+          grep -rhoE 'href="/[^"#]*"' _site --include='*.html' \
+            | sed 's/^href="//;s/"$//' | sort -u > /tmp/links
+          broken=0
+          while read -r p; do
+            case "$p" in */) target="_site${p}index.html" ;; *) target="_site$p" ;; esac
+            if [ ! -e "$target" ]; then echo "broken link: $p"; broken=1; fi
+          done < /tmp/links
+          [ "$broken" -eq 0 ] || exit 1
+          echo "$(wc -l < /tmp/links) internal links, all resolve"
 
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          path: site
+          # .nojekyll is a dotfile, and from v4 this action drops those unless
+          # told not to. Without it Pages runs Jekyll and removes /assets/.
+          include-hidden-files: true
+          path: _site
 
   deploy:
     needs: build

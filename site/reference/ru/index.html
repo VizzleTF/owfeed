@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Команды и конфиг — owfeed</title>
+<meta name="description" content="Все команды owlab и owfeed, поля owlab.yaml и owfeed.yml, переменные окружения, коды возврата и словарь терминов упаковки OpenWrt.">
+<link rel="canonical" href="https://owfeed.org/reference/ru/">
+<link rel="alternate" hreflang="en" href="https://owfeed.org/reference/">
+<link rel="alternate" hreflang="ru" href="https://owfeed.org/reference/ru/">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<div class="shell">
+
+<aside class="side">
+<a class="brand" href="/ru/"><b>owfeed</b>.org</a>
+<p class="tagline">Подписанные фиды пакетов для OpenWrt, на обеих линиях релизов.</p>
+<nav>
+<h3>Начало</h3>
+<ul>
+  <li><a href="/ru/">Обзор</a></li>
+  <li><a href="/install/ru/">Поставить пакет</a></li>
+</ul>
+<h3>Публикация</h3>
+<ul>
+  <li><a href="/cookbook/ru/">Выпустить пакет</a></li>
+  <li><a href="/reference/ru/" class="here">Команды и конфиг</a></li>
+  <li><a href="/problems/ru/">Если сломалось</a></li>
+</ul>
+<h3>Исходники</h3>
+<ul class="source">
+  <li><a href="https://github.com/owfeed/owlab">owlab</a></li>
+  <li><a href="https://github.com/owfeed/owfeed">owfeed</a></li>
+  <li><a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a></li>
+</ul>
+<p class="lang"><a href="/reference/">EN</a> · <span class="here">RU</span></p>
+</nav>
+</aside>
+
+<main class="page">
+
+<p class="kicker">Справочник</p>
+<h1>Команды и конфиг</h1>
+<p class="lead">Страница для поиска. Актуально для owlab v0.5.1 и owfeed v0.2.1. Полное описание
+конфига — <a href="/schema/v1.json">schema/v1.json</a>: он генерируется из кода, и его же читает
+ваш редактор.</p>
+
+<h2>owlab — разработка и проверка</h2>
+
+<table>
+<tr><th>Команда</th><th>Что делает</th></tr>
+<tr><td><code>owlab up</code></td><td>Собрать и запустить роутеры. <code>--rebuild</code> выбрасывает старые.</td></tr>
+<tr><td><code>owlab down</code></td><td>Остановить их. <code>--purge</code> ещё и удаляет образы с дисками виртуалок.</td></tr>
+<tr><td><code>owlab sync</code></td><td>Скопировать исходники в живые роутеры и перезагрузить LuCI. <code>--watch</code> делает это на каждое сохранение.</td></tr>
+<tr><td><code>owlab build</code></td><td>Собрать настоящий <code>.apk</code>/<code>.ipk</code> в OpenWrt SDK, положить в <code>dist/&lt;arch&gt;/</code>.</td></tr>
+<tr><td><code>owlab test</code></td><td>Поднять, поставить, проверить, погасить, вернуть 0 или 1. То же самое крутится в CI.</td></tr>
+<tr><td><code>owlab install</code></td><td>Поставить пакеты на живой роутер — файлом или по имени.</td></tr>
+<tr><td><code>owlab shell</code> / <code>exec</code></td><td>Открыть шелл или выполнить одну команду.</td></tr>
+<tr><td><code>owlab logs</code></td><td>Лог загрузки и сервисов. <code>-f</code> следит.</td></tr>
+<tr><td><code>owlab open</code></td><td>Открыть LuCI в браузере.</td></tr>
+<tr><td><code>owlab status</code></td><td>Что запущено и на каких портах.</td></tr>
+<tr><td><code>owlab releases</code></td><td>Сравнить ваши пины с тем, что публикуют серверы загрузки.</td></tr>
+<tr><td><code>owlab doctor</code></td><td>Проверить машину: порты, ssh-ключи, переводы строк, QEMU, DNS.</td></tr>
+</table>
+
+<p>Любая команда принимает id роутеров; без них работает со всеми. <code>--config</code>
+(или <code>-c</code>) можно ставить где угодно в строке. У <code>test</code>,
+<code>status</code> и <code>releases</code> есть <code>--json</code>.</p>
+
+<h3>Утверждения owlab test</h3>
+
+<pre>owlab test --release 25.12.5 \
+  --install 'dist/*/my-app-*' \
+  --assert 'http 200 /cgi-bin/luci/admin/services/mine' \
+  --assert 'service mined' \
+  --assert 'uci mine.@mine[0].enabled' \
+  --assert 'package my-app'</pre>
+
+<p><code>--feed URL</code> вместе с <code>--feed-key FILE</code> ставит пакет по имени из
+подписанного индекса, а не из файла. <code>--keep</code> оставляет роутеры поднятыми,
+<code>--json</code> пишет отчёт в stdout.</p>
+
+<h2>owfeed — подпись, индекс, публикация</h2>
+
+<table>
+<tr><th>Команда</th><th>Что делает</th></tr>
+<tr><td><code>owfeed init</code></td><td>Создать заготовку <code>owfeed.yml</code> в текущем каталоге.</td></tr>
+<tr><td><code>owfeed keygen</code></td><td>Сделать ключ подписи фида. С <code>--usign</code> — ключ для манифестов релиза.</td></tr>
+<tr><td><code>owfeed lock</code></td><td>Вывести матрицу архитектур в <code>owfeed.lock</code>. <code>--update</code> печатает разницу.</td></tr>
+<tr><td><code>owfeed build</code></td><td>Упаковать все пакеты из конфига в <code>dist/&lt;arch&gt;/</code>. Не компилирует.</td></tr>
+<tr><td><code>owfeed sign</code></td><td>Положить подпись внутрь каждого пакета.</td></tr>
+<tr><td><code>owfeed index</code></td><td>Разложить пакеты по архитектурам и написать в каждой подписанный индекс.</td></tr>
+<tr><td><code>owfeed doctor</code></td><td>Проверить собранное дерево. <code>--require-origin</code> требует, чтобы каждый пакет называл свой репозиторий.</td></tr>
+<tr><td><code>owfeed smoke</code></td><td>Поставить собранный фид на живой образ OpenWrt. <code>--release 24.10</code> для старой линии.</td></tr>
+<tr><td><code>owfeed verify</code></td><td>Проверить опубликованный фид снаружи, по его же документированному URL.</td></tr>
+<tr><td><code>owfeed publish</code></td><td>Пропустить дерево через проверки и отдать цели публикации. Флага «всё равно опубликовать» нет.</td></tr>
+<tr><td><code>owfeed release</code></td><td>Подписать собранные пакеты и написать подписанный манифест для фида.</td></tr>
+<tr><td><code>owfeed verify-artifact</code></td><td>Проверить чужой релиз по подписи его автора.</td></tr>
+<tr><td><code>owfeed install-snippet</code></td><td>Напечатать инструкцию, по которой подписываются ваши пользователи. <code>--format sh</code> — только команды.</td></tr>
+<tr><td><code>owfeed releases</code></td><td>Что публикует сервер загрузки по каждой линии и в каком формате.</td></tr>
+</table>
+
+<p>Глобальные флаги: <code>-C DIR</code>, <code>--config PATH</code>, <code>--cache DIR</code>,
+<code>--frozen-lock</code>, <code>--no-network</code>, <code>-v</code>.</p>
+
+<p>Обычный порядок — <code>build → sign → index → doctor</code>. Каждый шаг принимает каталог и
+оставляет каталог. Подпись дописывает байты, поэтому индекс, собранный до подписи, перестаёт
+сходиться с файлами.</p>
+
+<h2>owlab.yaml</h2>
+
+<pre>version: 1
+
+project:                      # необязательно — только если sync надо подсказать
+  install:                    # путь в исходниках → путь на роутере
+    my-package/htdocs: /www
+  build: ./build-css.sh       # выполнить перед каждым sync
+  post_sync: |                # выполнить на роутере после каждого sync
+    uci -q commit luci
+  theme: footstrap            # выбирать эту тему после каждого sync
+
+defaults:                     # подмешивается в каждый роутер ниже
+  packages: ["+luci-app-sqm", "-ppp"]
+  fixtures: [all]             # выдумать сети, клиентов, аренды DHCP
+  extra_packages:             # поставить по URL, а не из фида
+    - name: luci-app-podkop
+      apk: https://…/luci-app-podkop-0.7.21-r1.apk
+      ipk: https://…/luci-app-podkop-v0.7.21-r1-all.ipk
+
+routers:
+  - id: owrt2512
+    release: "25.12.5"        # точные номера релизов
+    distro: openwrt           # или immortalwrt
+    fidelity: vm              # basic (контейнер) или vm (QEMU, настоящее ядро)
+    ports: { http: 8080, ssh: 2222 }
+    memory: 512M
+    radios: 2                 # только vm — mac80211_hwsim</pre>
+
+<p>Незнакомые ключи считаются ошибкой намеренно, поэтому опечатка падает при загрузке, а не
+игнорируется молча.</p>
+
+<h2>owfeed.yml</h2>
+
+<pre>version: 1
+
+feed:
+  name: my-feed               # из имени выводятся все остальные имена файлов
+  url: https://feed.example.org
+  maintainer: "Вы &lt;you@example.org&gt;"
+
+releases:
+  - line: "25.12"
+    default: true             # эту линию рекламирует install-snippet
+    format: apk
+    arches: auto              # берётся с downloads.openwrt.org
+  - line: "24.10"
+    format: ipk
+
+signing:
+  key: env:OWFEED_SIGN_KEY    # EC prime256v1, подписывает индексы и пакеты apk
+  usign-key: env:OWFEED_USIGN_KEY   # usign, подписывает индексы opkg
+  sign-packages: true
+
+packages:
+  - name: luci-app-mine
+    build: mkpkg              # упаковать разложенный каталог; owfeed не компилирует
+    arch: noarch              # никогда не "all" — apk его отвергает
+    version: 1.0.0-r1         # либо version-from: makefile:./Makefile
+    files: ./staging/luci-app-mine
+    conffiles: ["/etc/config/mine"]
+    depends: ["luci-base"]
+    i18n: { from: ./po }      # компилирует .po в .lmo, который читает LuCI
+    releases: ["25.12"]       # без этой строки пакет идёт во все линии</pre>
+
+<p>Полный список полей с описаниями: <a href="/schema/v1.json">schema/v1.json</a>. Добавьте эту
+строку в начало конфига, и редактор начнёт подсказывать и проверять:</p>
+
+<pre># yaml-language-server: $schema=https://owfeed.org/schema/v1.json</pre>
+
+<h2>Переменные окружения</h2>
+
+<table>
+<tr><th>Переменная</th><th>Чья</th><th>Зачем</th></tr>
+<tr><td><code>OWFEED_SIGN_KEY</code></td><td>owfeed</td><td>Ключ EC, которым подписываются индексы и пакеты apk.</td></tr>
+<tr><td><code>OWFEED_USIGN_KEY</code></td><td>owfeed</td><td>Ключ usign, которым подписываются индексы opkg.</td></tr>
+<tr><td><code>OWFEED_RELEASE_KEY</code></td><td>owfeed</td><td>Ключ usign, которым подписывается манифест релиза.</td></tr>
+<tr><td><code>OWFEED_RELEASE_DATE</code></td><td>owfeed</td><td>Задать время в манифесте, чтобы сборка была воспроизводимой.</td></tr>
+<tr><td><code>OWLAB_CONFIG</code></td><td>owlab</td><td>Где лежит <code>owlab.yaml</code>.</td></tr>
+<tr><td><code>OWLAB_PUBKEY</code></td><td>owlab</td><td>Какой публичный ключ ставить на роутеры. По умолчанию все <code>~/.ssh/id_*.pub</code>.</td></tr>
+<tr><td><code>OWLAB_ROOT_PASSWORD</code></td><td>owlab</td><td>Задать пароль root. По умолчанию пароля нет.</td></tr>
+</table>
+
+<h2>Коды возврата owfeed</h2>
+
+<p>CI может повторить попытку при недоступности апстрима, но не должен повторять проваленную
+проверку. Поэтому 7 и 8 — разные коды.</p>
+
+<table>
+<tr><th>Код</th><th>Что значит</th></tr>
+<tr><td>0</td><td>Успех</td></tr>
+<tr><td>2</td><td>Ошибка в конфиге</td></tr>
+<tr><td>3</td><td>Сборка не удалась</td></tr>
+<tr><td>4</td><td>Проблема с ключом</td></tr>
+<tr><td>5</td><td>Не собрался индекс</td></tr>
+<tr><td>6</td><td>Не удалась публикация</td></tr>
+<tr><td>7</td><td>Проверка провалена — повторять нельзя</td></tr>
+<tr><td>8</td><td>Апстрим недоступен — повторить можно</td></tr>
+<tr><td>9</td><td><code>owfeed.lock</code> разошёлся с апстримом</td></tr>
+</table>
+
+<h2>Словарь</h2>
+
+<dl class="glossary">
+<dt>apk</dt>
+<dd>Пакетный менеджер OpenWrt начиная с 25.12. Читает один бинарный индекс на архитектуру и
+проверяет его по ключу из <code>/etc/apk/keys</code>.</dd>
+
+<dt>opkg</dt>
+<dd>Пакетный менеджер на 24.10 и старее. Читает текстовый индекс и проверяет его через usign.
+Форматы apk он не понимает совсем.</dd>
+
+<dt>фид (feed)</dt>
+<dd>Каталог с пакетами и подписанными индексами, отданный по HTTPS. Ни серверного софта, ни базы
+данных: подойдёт что угодно, что умеет отдавать статические файлы.</dd>
+
+<dt>индекс</dt>
+<dd>Файл со списком всех пакетов фида, их версий и хешей. У apk это <code>packages.adb</code>,
+у opkg — <code>Packages</code> и <code>Packages.gz</code>. Доверие живёт здесь: индекс подписан,
+а каждый пакет сверяется с хешем, который в нём записан.</dd>
+
+<dt>noarch и all</dt>
+<dd>Два названия для пакета, который работает на любой архитектуре. apk требует
+<code>noarch</code> и отвергает <code>all</code> как неустановимое, opkg знает только
+<code>all</code>. Поэтому одна сборка пишет и <code>dist/noarch/</code>, и
+<code>dist/all/</code>.</dd>
+
+<dt>usign</dt>
+<dd>Схема подписи на ed25519, которая уже есть в OpenWrt, так что роутер проверяет подпись без
+единого установленного пакета. Ею подписывают индексы opkg и манифесты релизов. Ключи ищутся по
+id, поэтому для opkg важно <em>имя</em> файла ключа.</dd>
+
+<dt>conffiles</dt>
+<dd>Список конфигурационных файлов, которыми владеет пакет. Всё, что лежит в
+<code>/etc/config/</code> и не объявлено здесь, молча заменяется вашими значениями по умолчанию
+на каждом обновлении прошивки.</dd>
+
+<dt>.lmo</dt>
+<dd>Скомпилированный формат переводов, который читает LuCI. Класть в пакет <code>.po</code>
+бесполезно: укажите на них <code>i18n.from:</code>, и они скомпилируются при сборке.</dd>
+
+<dt>sysupgrade</dt>
+<dd>Обновление прошивки с сохранением заранее перечисленных файлов.
+<code>/etc/apk/keys/*.pem</code> и список репозиториев в этот перечень по умолчанию не входят —
+добавьте их в <code>/etc/sysupgrade.conf</code>.</dd>
+
+<dt>dist/&lt;arch&gt;/</dt>
+<dd><a href="https://github.com/owfeed/owfeed/blob/main/docs/artifact-contract.md">Контракт
+артефактов</a>: один каталог на архитектуру, названный так, как её пишет downloads.openwrt.org.
+Архитектура — это каталог, а не имя файла.</dd>
+
+<dt>-r&lt;n&gt;</dt>
+<dd>Ревизия пакета, всегда в конце версии. После <code>~</code> apk читает хеш коммита, поэтому
+там допустимы только шестнадцатеричные цифры: пишите <code>1.0_beta1</code>, а не
+<code>1.0~beta</code>.</dd>
+</dl>
+
+<footer>
+<p>Подробнее по каждому инструменту:
+<a href="https://github.com/owfeed/owlab/blob/main/docs/reference_ru.md">owlab docs/reference_ru.md</a> ·
+<a href="https://github.com/owfeed/owfeed/blob/main/docs/manifest-format.md">формат манифеста</a> ·
+<a href="https://github.com/owfeed/owfeed/blob/main/docs/apk-behaviour.md">проверенное поведение apk и opkg</a></p>
+</footer>
+
+</main>
+</div>
+</body>
+</html>

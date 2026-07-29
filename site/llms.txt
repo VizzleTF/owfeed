@@ -1,0 +1,36 @@
+# owfeed
+
+> Two Go binaries for OpenWrt packaging. `owlab` starts throwaway OpenWrt routers in Docker and proves a package works on them; `owfeed` signs packages and turns a directory into a signed feed users can `apk add`. Both release lines are covered: apk on 25.12 and later, opkg on 24.10 and earlier. The tools do not depend on each other — they agree on a directory called `dist/` with one subdirectory per architecture.
+
+Key facts that are easy to get wrong:
+
+- An architecture-independent package is `noarch` for apk and `all` for opkg. apk rejects `all` as uninstallable, so one build writes both `dist/noarch/` and `dist/all/`.
+- The architecture is the directory, never the filename.
+- apk has no revocation. A key in `/etc/apk/keys` is a trust anchor for every package name, not just the feed's own.
+- apk does not follow HTTP redirects.
+- `/etc/apk/keys/*.pem` does not survive sysupgrade unless listed in `/etc/sysupgrade.conf`.
+- `owfeed` never compiles sources. Compilation belongs to `owlab build` or the OpenWrt SDK.
+- Sign before indexing: signing appends bytes to a package.
+
+## Docs
+
+- [Overview](https://owfeed.org/): what the tools are, how to install them, and whether you need a feed at all
+- [Install a package from a feed](https://owfeed.org/install/): for router owners — add a key, add a repository, install by name, on both release lines
+- [Ship your package](https://owfeed.org/cookbook/): for package authors — build, test, sign a release, get into a feed, add the 25.12 line to an existing 24.10 package
+- [Commands and config](https://owfeed.org/reference/): every owlab and owfeed command, the fields of owlab.yaml and owfeed.yml, environment variables, exit codes, glossary
+- [When something breaks](https://owfeed.org/problems/): symptom, cause, fix
+- [owfeed.yml JSON Schema](https://owfeed.org/schema/v1.json): generated from the code; the authoritative config reference
+
+## Repositories
+
+- [owlab](https://github.com/owfeed/owlab): throwaway OpenWrt routers, SDK builds, CI assertions. Holds no keys, ever. GPL-2.0-only
+- [owfeed](https://github.com/owfeed/owfeed): build, sign, index, verify, publish. Apache-2.0
+- [owfeed-packages](https://github.com/owfeed/owfeed-packages): a live feed built with owfeed; every package is built and signed by its author and ingested unchanged
+
+## Optional
+
+- [ECOSYSTEM.md](https://github.com/owfeed/owfeed/blob/main/docs/ECOSYSTEM.md): where the boundary between the tools runs, and the invariants each one holds
+- [artifact-contract.md](https://github.com/owfeed/owfeed/blob/main/docs/artifact-contract.md): the `dist/<arch>/` format both tools read and write
+- [apk-behaviour.md](https://github.com/owfeed/owfeed/blob/main/docs/apk-behaviour.md): what apk and opkg actually do, established by running them
+- [writing-guide.md](https://github.com/owfeed/owfeed/blob/main/docs/writing-guide.md): how this project's documentation is written
+- Russian versions of every page live under the same path with `/ru/` appended, for example https://owfeed.org/cookbook/ru/
