@@ -183,23 +183,26 @@ They appear in the index without being passed to `--info` (and `--info` rejects 
 apk has no `conflicts` field. A conflict is written as a dependency with a leading
 `!`, and `--info depends:` accepts it:
 
+Package names in this reproduction are substituted for neutral ones; the behaviour
+does not depend on them. Everything else is the output as it was produced.
+
 ```sh
 $APK mkpkg --info name:p --info version:1.0-r1 --info arch:noarch \
-  --info "depends:curl jq !https-dns-proxy !luci-app-passwall" --files root --output p.apk
+  --info "depends:curl jq !othermon !luci-app-othermon" --files root --output p.apk
 $APK adbdump p.apk
 #   depends: # 4 items
 #     - curl
-#     - '!https-dns-proxy'
+#     - '!othermon'
 #     - jq
-#     - '!luci-app-passwall'
+#     - '!luci-app-othermon'
 ```
 
 On the device it resolves as a real constraint:
 
 ```
 ERROR: unable to select packages:
-  https-dns-proxy-2026.05.06-r1:
-    breaks: podkop-0.28072026-r1[!https-dns-proxy]
+  othermon-2026.05.06-r1:
+    breaks: netwatch-1.4.0-r1[!othermon]
 ```
 
 **OpenWrt's own apk packages carry none of this.** In `package-pack.mk`, `CONFLICTS`
@@ -208,9 +211,9 @@ file; the `mkpkg` invocation a few hundred lines below never mentions it, and th
 apk branch does not write `CONTROL` at all. So a Makefile that declares a conflict
 does not enforce one on 25.12.
 
-That is not academic. `podkop` declares conflicts with `https-dns-proxy`, `nextdns`,
-`luci-app-passwall` and `luci-app-passwall2` — four packages that all rewrite the
-routing table — and on 25.12 nothing stops a user installing two of them.
+That is not academic. Real packages in the wild declare conflicts with three or four
+others that write the same configuration, and on 25.12 nothing stops a user
+installing two of them.
 
 ## `mkpkg` records unknown file owners as `nobody`, not as root
 
@@ -326,7 +329,8 @@ No `--allow-untrusted` in either case. OpenWrt's own 25.12 packages are unsigned
 individually (commit `084697e`), so this path always needs the flag for them — and
 LuCI's Upload Package flow cannot supply it, because `package-manager-call` drops
 arguments it does not recognise (luci#8482). A trusted per-package signature is the
-missing link, and signing each package costs nothing.
+missing link for *this path*, and only for it — see the next entry for what the path
+costs, and the one after for what happens without any package signature at all.
 
 ### A local install pins the package forever
 
@@ -340,6 +344,50 @@ The `><` operator pins by content hash, so the package will never again be upgra
 from the repository, and `/etc/apk/world` survives sysupgrade. Documentation must
 therefore never offer local installation as the way to install from a feed. (The
 hash is base64, not hex as the design assumed — the behaviour is what matters.)
+
+### An unsigned package installs, upgrades and removes from a signed index
+
+The whole LuCI lifecycle works with no package signature at all, as long as the
+index is signed. Run against a feed built by `owfeed` with
+`signing.sign-packages: false`, on 25.12.5, driving LuCI's own wrapper rather than
+`apk` directly:
+
+```sh
+# The package is in the list LuCI renders
+/usr/libexec/package-manager-call list-available | grep luci-app-demo   # present
+
+# Install button
+/usr/libexec/package-manager-call install luci-app-demo
+#   { "code": 0, "pkmcmd": "apk add luci-app-demo",
+#     "stdout": "(1/1) Installing luci-app-demo (1.0.0-r1)" }
+
+# Upgrade button, after publishing 1.0.1-r1
+/usr/libexec/package-manager-call upgrade luci-app-demo
+#   { "code": 0, "stdout": "(1/1) Upgrading luci-app-demo (1.0.0-r1 -> 1.0.1-r1)" }
+
+# Remove button
+/usr/libexec/package-manager-call remove luci-app-demo
+#   { "code": 0, "stdout": "(1/1) Purging luci-app-demo (1.0.1-r1)" }
+```
+
+`/etc/apk/world` holds `luci-app-demo` with **no** `><` pin, which is why the upgrade
+resolves at all — the contrast with the entry above is the whole difference between
+installing by name and installing a file.
+
+Trust comes from the index on this path: apk verifies it against the key in
+`/etc/apk/keys` and then checks each package against the hash the index recorded. The
+signature inside a package is never consulted. Removing the feed's key makes the
+package vanish from the list entirely rather than install untrusted.
+
+Two things this does **not** do. `apk add ./file.apk` and LuCI's Upload Package still
+fail with `UNTRUSTED signature` and `code: 99` — there is no index to check against,
+and the `--allow-untrusted` that would fix it is dropped by `package-manager-call`
+(confirmed by reading it on the router: the apk branch shifts past any argument
+starting with `-` except `--force-overwrite` and
+`--force-removal-of-dependent-packages`).
+
+Building the index needs `mkndx --allow-untrusted`, or it refuses the unsigned
+package with `UNTRUSTED signature`, exit 99, and writes nothing.
 
 ---
 

@@ -101,6 +101,30 @@ Three things follow, and they are the reason for the table:
 * reimplements what owlab and owfeed already do. It is a worked example, not a showcase
   for hand-rolled CI.
 
+### None of them takes a position on what a package is for
+
+owlab starts routers and runs assertions. owfeed packages, signs and indexes. Neither
+inspects what a package does, and neither has an opinion about it — they are build and
+distribution plumbing, in the same category as `tar`, `make` or a web server. The
+documentation stays on that side of the line deliberately: examples name a generic package
+and describe a mechanism, never a purpose, and no third-party project is presented as a
+worked example.
+
+This is a boundary rather than an omission, and it is written down here for the same reason
+the others are. A tool that stays neutral is judged as a tool; documentation that reads as
+advocacy for one use invites the question of whether the tool exists for that use, and
+nothing is gained by having to answer it. The separation of the repositories — a build tool,
+a publishing tool, and a feed that decides whose keys it pins — was drawn for engineering
+reasons and holds on this axis too.
+
+**Where responsibility sits.** A feed's signature states provenance and channel: these bytes
+are what the feed published, from the author whose key it pinned. It is not a statement about
+a package's contents, safety, quality or lawfulness, and the feed does not review code,
+assess security or judge legality in any jurisdiction. Responsibility for those rests with
+the package's author, whose repository is recorded in the package metadata and shown by
+`apk info` on the router. `owfeed-packages/SECURITY.md` is the operative statement, with the
+notice-and-action procedure that goes with it.
+
 ## Contested capabilities
 
 ### Compilation belongs to owlab

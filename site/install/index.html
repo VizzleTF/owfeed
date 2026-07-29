@@ -34,6 +34,7 @@
   <li><a href="https://github.com/owfeed/owlab">owlab</a></li>
   <li><a href="https://github.com/owfeed/owfeed">owfeed</a></li>
   <li><a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a></li>
+  <li><a href="/legal/">Legal and privacy</a></li>
 </ul>
 <p class="lang"><span class="here">EN</span> · <a href="/install/ru/">RU</a></p>
 </nav>
@@ -69,7 +70,7 @@ echo "https://repo.owfeed.org/releases/25.12/$(cat /etc/apk/arch)/packages.adb" 
 printf '%s\n' /etc/apk/keys/owfeed-packages.pem \
   /etc/apk/repositories.d/owfeed-packages.list >> /etc/sysupgrade.conf
 
-apk update &amp;&amp; apk add podkop-updater</pre>
+apk update &amp;&amp; apk add luci-theme-footstrap</pre>
 
 <p>Step 3 is not optional. Neither file survives sysupgrade on its own, and a missing key is the
 most common cause of <code>UNTRUSTED signature</code> after a firmware upgrade.</p>
@@ -84,7 +85,7 @@ wget https://repo.owfeed.org/9040356b214084da \
 echo "src/gz owfeed-packages https://repo.owfeed.org/releases/24.10/$(. /etc/openwrt_release; echo $DISTRIB_ARCH)" \
   >> /etc/opkg/customfeeds.conf
 
-opkg update &amp;&amp; opkg install podkop-updater</pre>
+opkg update &amp;&amp; opkg install luci-theme-footstrap</pre>
 
 <h2>Three things that will bite you</h2>
 
@@ -100,13 +101,22 @@ opkg update &amp;&amp; opkg install podkop-updater</pre>
 <p>A feed signs its own index, and the index is where trust comes from: apk verifies the index
 against the key you installed, then checks each package against the hash the index recorded.</p>
 
-<p>What that says is <em>this feed vouches for these bytes</em>. What it does not say is who wrote
-the software. A well-run feed verifies each author's own signature against a pinned key before
-adding its own — <a href="https://github.com/owfeed/owfeed-packages/blob/main/CONTRIBUTING.md">owfeed-packages
-documents exactly what it checks</a>. Read that page for any feed before you trust it.</p>
+<p>What that says is <em>these bytes are the ones this feed published</em>, and nothing more. It is
+not a statement that the software is safe, that it works, that it is lawful where you are, or that
+anyone looked at what it does. A well-run feed verifies each author's own signature against a
+pinned key before adding its own and says exactly what it checks —
+<a href="https://github.com/owfeed/owfeed-packages/blob/main/SECURITY.md">owfeed-packages does</a>.
+Read that page for any feed before you trust it.</p>
 
-<p>apk signature blocks are additive, so a package can carry both the author's signature and the
-feed's. Installing the author's public key too lets you verify them directly.</p>
+<p>Responsibility for what is inside a package is the author's, not the feed's.</p>
+
+<p>Whether a package carries a signature of its own is up to the feed. apk signature blocks are
+additive, so a package can hold the author's and the feed's at once — and a feed may equally
+decline to add its own, leaving the author's file exactly as it was built. Neither changes how
+installing by name works: the signed index is what your router checks.</p>
+
+<p><a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a> signs the index and
+nothing else, so what you install is the author's own file.</p>
 
 <h2>Removing a feed</h2>
 
@@ -121,10 +131,17 @@ opkg update</pre>
 
 <p>Packages already installed stay. They stop receiving upgrades.</p>
 
+<div class="note"><strong>Packages are other people's software, used at your own risk.</strong> A
+feed verifies where a package came from and that it installs. It does not review the code, assess
+its security, or judge whether it is lawful where you are — responsibility for what is inside a
+package rests with its author, whom <code>apk info &lt;name&gt;</code> will name.
+<a href="/legal/">The full statement is here.</a></div>
+
 <footer>
 <p>The feed used in these examples is
 <a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a>. Other feeds publish
 their own key and URL; the shape of the commands is the same.</p>
+<p><a href="/legal/">Disclaimer and privacy</a></p>
 </footer>
 
 </main>

@@ -34,6 +34,7 @@
   <li><a href="https://github.com/owfeed/owlab">owlab</a></li>
   <li><a href="https://github.com/owfeed/owfeed">owfeed</a></li>
   <li><a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a></li>
+  <li><a href="/legal/">Legal and privacy</a></li>
 </ul>
 <p class="lang"><span class="here">EN</span> · <a href="/reference/ru/">RU</a></p>
 </nav>
@@ -76,7 +77,19 @@ code and is what your editor reads.</p>
   --assert 'http 200 /cgi-bin/luci/admin/services/mine' \
   --assert 'service mined' \
   --assert 'uci mine.@mine[0].enabled' \
-  --assert 'package my-app'</pre>
+  --assert 'package my-app' \
+  --assert 'file /usr/share/rpcd/acl.d/my-app.json' \
+  --assert 'exec pgrep mined | grep -q .'</pre>
+
+<table>
+<tr><th>Kind</th><th>Passes when</th></tr>
+<tr><td><code>http &lt;status&gt; &lt;path&gt;</code></td><td>The page answers with that status and is not an error page. <code>2xx</code> matches a class.</td></tr>
+<tr><td><code>service &lt;name&gt;</code></td><td><code>/etc/init.d/&lt;name&gt; running</code> says so, or ubus does.</td></tr>
+<tr><td><code>package &lt;name&gt;</code></td><td>The router's package manager reports it installed.</td></tr>
+<tr><td><code>uci &lt;path&gt;</code></td><td>The value is set — how you check that a package's <code>uci-defaults</code> really ran.</td></tr>
+<tr><td><code>file &lt;path&gt;</code></td><td>The path exists on the router.</td></tr>
+<tr><td><code>exec &lt;command&gt;</code></td><td>The command exits 0.</td></tr>
+</table>
 
 <p><code>--feed URL</code> with <code>--feed-key FILE</code> installs by name out of a signed
 index instead of from a file. <code>--keep</code> leaves the routers up; <code>--json</code>
@@ -125,9 +138,9 @@ defaults:                     # merged into every router below
   packages: ["+luci-app-sqm", "-ppp"]
   fixtures: [all]             # invent networks, clients, leases
   extra_packages:             # install from a URL, not a feed
-    - name: luci-app-podkop
-      apk: https://…/luci-app-podkop-0.7.21-r1.apk
-      ipk: https://…/luci-app-podkop-v0.7.21-r1-all.ipk
+    - name: luci-app-example
+      apk: https://…/luci-app-example-1.4.0-r1.apk
+      ipk: https://…/luci-app-example-v1.4.0-r1-all.ipk
 
 routers:
   - id: owrt2512
@@ -160,7 +173,7 @@ releases:
 signing:
   key: env:OWFEED_SIGN_KEY    # EC prime256v1, signs apk indexes and packages
   usign-key: env:OWFEED_USIGN_KEY   # usign, signs opkg indexes
-  sign-packages: true
+  sign-packages: true         # false: sign only the index, not other people's files
 
 publish:
   - target: github-pages
@@ -186,7 +199,7 @@ line at the top of your config and your editor will complete and validate it:</p
 <table>
 <tr><th>Variable</th><th>Used by</th><th>For</th></tr>
 <tr><td><code>OWFEED_SIGN_KEY</code></td><td>owfeed</td><td>The EC key that signs apk indexes and packages.</td></tr>
-<tr><td><code>OWFEED_USIGN_KEY</code></td><td>owfeed</td><td>The usign key that signs opkg indexes.</td></tr>
+<tr><td><code>OWFEED_USIGN_KEY</code></td><td>owfeed</td><td>The usign key that signs opkg indexes. Only a convention — <code>signing.usign-key</code> names whichever variable it likes, and there is no default.</td></tr>
 <tr><td><code>OWFEED_RELEASE_KEY</code></td><td>owfeed</td><td>The usign key that signs a release manifest.</td></tr>
 <tr><td><code>OWFEED_RELEASE_DATE</code></td><td>owfeed</td><td>Override the manifest timestamp for a reproducible build.</td></tr>
 <tr><td><code>OWLAB_CONFIG</code></td><td>owlab</td><td>Where <code>owlab.yaml</code> lives.</td></tr>
@@ -202,6 +215,7 @@ different codes.</p>
 <table>
 <tr><th>Code</th><th>Meaning</th></tr>
 <tr><td>0</td><td>Success</td></tr>
+<tr><td>1</td><td>Internal error — a bug, or something the tool could not classify</td></tr>
 <tr><td>2</td><td>Config error</td></tr>
 <tr><td>3</td><td>Build failed</td></tr>
 <tr><td>4</td><td>Key problem</td></tr>
@@ -270,6 +284,7 @@ so only hex digits are allowed there — write <code>1.0_beta1</code>, not <code
 <a href="https://github.com/owfeed/owlab/blob/main/docs/reference.md">owlab docs/reference.md</a> ·
 <a href="https://github.com/owfeed/owfeed/blob/main/docs/manifest-format.md">manifest format</a> ·
 <a href="https://github.com/owfeed/owfeed/blob/main/docs/apk-behaviour.md">verified apk and opkg behaviour</a></p>
+<p><a href="/legal/">Disclaimer and privacy</a></p>
 </footer>
 
 </main>

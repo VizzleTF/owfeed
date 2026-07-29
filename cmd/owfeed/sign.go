@@ -45,6 +45,18 @@ func (a *app) sign(ctx context.Context, args []string) error {
 			"`owfeed sign --key env:OWFEED_SIGN_KEY %s`", cfgErr, dir)
 	}
 
+	// A feed can decline to put its signature inside packages it did not build.
+	// The index is signed either way, and that is what a router's trust comes from.
+	//
+	// Only honoured when the key comes from the config: `--key` means somebody is
+	// signing deliberately, and an author signing their own packages before a
+	// release is exactly the case this must not silently skip.
+	if c != nil && *keySpec == "" && !*c.Signing.SignPackages {
+		a.logf("signing.sign-packages is false: leaving packages as their authors built them")
+		a.logf("the index is still signed by this feed — run `owfeed index` next")
+		return nil
+	}
+
 	tool, err := a.signingTool(ctx, c, *sdkRelease)
 	if err != nil {
 		return err

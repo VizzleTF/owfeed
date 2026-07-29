@@ -8,9 +8,9 @@ twenty lines.
 
 - [The simplest thing that works](#the-simplest-thing-that-works)
 - [A LuCI theme: luci-theme-footstrap](#a-luci-theme-luci-theme-footstrap) — translations
-- [Two packages from one repository: podkop](#two-packages-from-one-repository-podkop) — conflicts,
+- [A service and its LuCI app from one repository](#a-service-and-its-luci-app-from-one-repository) — conflicts,
   real dependencies
-- [A compiled binary: podkop-updater](#a-compiled-binary-podkop-updater) — several architectures
+- [A compiled binary: a static Go daemon](#a-compiled-binary-a-static-go-daemon) — several architectures
 - [Both release lines from one config](#both-release-lines-from-one-config) — apk and opkg
 
 ---
@@ -165,48 +165,47 @@ Paste the output into the README verbatim. `doctor` checks it has not drifted.
 
 ---
 
-## Two packages from one repository: podkop
+## A service and its LuCI app from one repository
 
-[podkop](https://github.com/itdoginfo/podkop) ships two packages from one repo — a shell-script
-service and the LuCI app that drives it. Both are `PKGARCH:=all` with empty `Build/Compile`, so
-neither needs a toolchain. This is the config that builds them, verified end to end against the real
-upstream repository.
+The common shape for anything with a settings page: a shell-script service and the LuCI app that
+drives it, in one repository. Both are architecture-independent with an empty `Build/Compile`, so
+neither needs a toolchain.
 
 ```yaml
 version: 1
 
 feed:
-  name: podkop
+  name: netwatch
   url: https://feed.example.org
-  title: podkop
-  maintainer: "ITDog <podkop@itdog.info>"
+  title: netwatch
+  maintainer: "You <you@example.org>"
   license: GPL-2.0-or-later
-  homepage: https://podkop.net
+  homepage: https://example.org/netwatch
 
 publish:
   - target: github-pages
 
 packages:
-  - name: podkop
+  - name: netwatch
     build: mkpkg
     arch: noarch
     version-from: file:./VERSION
-    files: ./staging/podkop
-    description: "Domain routing. Use of VLESS, Shadowsocks technologies"
-    depends: [sing-box, curl, jq, kmod-nft-tproxy, coreutils-base64, bind-dig]
-    conflicts: [https-dns-proxy, nextdns, luci-app-passwall, luci-app-passwall2]
-    conffiles: ["/etc/config/podkop"]
+    files: ./staging/netwatch
+    description: "Link monitoring daemon"
+    depends: [curl, jq, coreutils-base64, bind-dig]
+    conflicts: [othermon, luci-app-othermon]
+    conffiles: ["/etc/config/netwatch"]
 
-  - name: luci-app-podkop
+  - name: luci-app-netwatch
     build: mkpkg
     arch: noarch
     version-from: file:./VERSION
-    files: ./staging/luci-app-podkop
-    description: "LuCI podkop app"
-    depends: [luci-base, podkop]
+    files: ./staging/luci-app-netwatch
+    description: "LuCI netwatch app"
+    depends: [luci-base, netwatch]
     i18n:
-      from: ./luci-app-podkop/po
-      basename: podkop
+      from: ./luci-app-netwatch/po
+      basename: netwatch
 ```
 
 Staging is a straight copy plus the version substitution the Makefiles do:
@@ -214,17 +213,17 @@ Staging is a straight copy plus the version substitution the Makefiles do:
 ```sh
 #!/bin/sh
 set -e
-VER="0.$(date +%d%m%Y)"; echo "$VER-r1" > VERSION
+VER="1.4.0"; echo "$VER-r1" > VERSION
 
-# luci-app-podkop: htdocs -> /www, root -> /
-mkdir -p staging/luci-app-podkop/www
-cp -a luci-app-podkop/htdocs/. staging/luci-app-podkop/www/
-cp -a luci-app-podkop/root/.   staging/luci-app-podkop/
+# luci-app-netwatch: htdocs -> /www, root -> /
+mkdir -p staging/luci-app-netwatch/www
+cp -a luci-app-netwatch/htdocs/. staging/luci-app-netwatch/www/
+cp -a luci-app-netwatch/root/.   staging/luci-app-netwatch/
 
-# podkop: files/ maps 1:1, except usr/lib/* -> /usr/lib/podkop/
-mkdir -p staging/podkop/usr/lib/podkop
-cp -a podkop/files/etc podkop/files/usr/bin staging/podkop/
-cp -a podkop/files/usr/lib/.                staging/podkop/usr/lib/podkop/
+# netwatch: files/ maps 1:1, except usr/lib/* -> /usr/lib/netwatch/
+mkdir -p staging/netwatch/usr/lib/netwatch
+cp -a netwatch/files/etc netwatch/files/usr/bin staging/netwatch/
+cp -a netwatch/files/usr/lib/.                  staging/netwatch/usr/lib/netwatch/
 
 grep -rl __COMPILED_VERSION_VARIABLE__ staging | xargs sed -i "s/__COMPILED_VERSION_VARIABLE__/$VER/g"
 ```
@@ -232,51 +231,51 @@ grep -rl __COMPILED_VERSION_VARIABLE__ staging | xargs sed -i "s/__COMPILED_VERS
 ```sh
 owfeed lock --update
 owfeed build && owfeed sign && owfeed index && owfeed doctor
-#   built dist/noarch/podkop-0.28072026-r1.apk
-#   built dist/noarch/luci-app-podkop-0.28072026-r1.apk
-#     note: compiled 1 translation catalogue(s): /usr/lib/lua/luci/i18n/podkop.ru.lmo
+#   built dist/noarch/netwatch-1.4.0-r1.apk
+#   built dist/noarch/luci-app-netwatch-1.4.0-r1.apk
+#     note: compiled 1 translation catalogue(s): /usr/lib/lua/luci/i18n/netwatch.ru.lmo
 #   25.12: 2 package(s) across 35 architecture(s)
 #   390 checks passed
 ```
 
-On a router, `apk add luci-app-podkop` pulls the whole chain — `sing-box`, `curl`, `jq`,
-`kmod-nft-tproxy`, `coreutils-base64`, `bind-dig` — from the official feeds, and installs with no
+On a router, `apk add luci-app-netwatch` pulls the whole chain — `curl`, `jq`,
+`coreutils-base64`, `bind-dig` — from the official feeds, and installs with no
 `--allow-untrusted`.
 
 ### `conflicts:` is the entry that does something OpenWrt's own build cannot
 
-podkop's Makefile declares `CONFLICTS:=https-dns-proxy nextdns luci-app-passwall
-luci-app-passwall2`, because all of them rewrite the routing table. On 25.12 that declaration has no
-effect: `package-pack.mk` emits `Conflicts:` only into the ipk control file and never passes it to
+Two packages that rewrite the same configuration cannot both be installed, so a Makefile declares
+`CONFLICTS:=othermon luci-app-othermon`. On 25.12 that declaration has no effect:
+`package-pack.mk` emits `Conflicts:` only into the ipk control file and never passes it to
 `mkpkg`, so the built apk package carries nothing.
 
 apk does support it — a conflict is a dependency with a leading `!` — and owfeed emits one:
 
 ```
 ERROR: unable to select packages:
-  https-dns-proxy-2026.05.06-r1:
-    breaks: podkop-0.28072026-r1[!https-dns-proxy]
+  othermon-2026.05.06-r1:
+    breaks: netwatch-1.4.0-r1[!othermon]
 ```
 
 ### A note on `i18n.basename`
 
-podkop ships `LUCI_LANGUAGES:=en ru`, which makes `luci.mk` emit separate
-`luci-i18n-podkop-<lang>` packages. Folding the catalogues into `luci-app-podkop` instead — which is
-what the config above does — means a router that installed the language package from an earlier
-release already owns `/usr/lib/lua/luci/i18n/podkop.ru.lmo`. Either keep shipping the language
-packages, or pick a basename that does not collide, as `luci-theme-footstrap` does. owfeed will not
-guess for you; `doctor` cannot see the other package either.
+A package shipping `LUCI_LANGUAGES:=en ru` makes `luci.mk` emit separate
+`luci-i18n-netwatch-<lang>` packages. Folding the catalogues into `luci-app-netwatch` instead —
+which is what the config above does — means a router that installed the language package from an
+earlier release already owns `/usr/lib/lua/luci/i18n/netwatch.ru.lmo`. Either keep shipping the
+language packages, or pick a basename that does not collide, as `luci-theme-footstrap` does.
+owfeed will not guess for you; `doctor` cannot see the other package either.
 
 ---
 
-## A compiled binary: podkop-updater
+## A compiled binary: a static Go daemon
 
 A static Go binary needs no OpenWrt SDK — only a build for the right target — so the SDK-less path
 is not restricted to `noarch`. One upstream artifact usually serves several OpenWrt architectures
 that share a GOARCH: one `arm64` build covers all four `aarch64_*`.
 
 ```yaml
-- name: podkop-updater
+- name: example-daemon
   build: mkpkg
   arch:
     - x86_64                 # GOARCH=amd64
@@ -286,9 +285,9 @@ that share a GOARCH: one `arm64` build covers all four `aarch64_*`.
     - aarch64_generic
     - mipsel_24kc            # GOARCH=mipsle, GOMIPS=softfloat
     - mipsel_74kc
-  version-from: file:./staging/podkop-updater.version
-  files: ./staging/podkop-updater/{arch}
-  description: "Watches podkop releases and drives update and rollback from Telegram."
+  version-from: file:./staging/example-daemon.version
+  files: ./staging/example-daemon/{arch}
+  description: "One line. LuCI truncates past 512 bytes."
 ```
 
 `{arch}` is required whenever more than one architecture is named. Two architectures cannot share a

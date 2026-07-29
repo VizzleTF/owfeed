@@ -275,8 +275,8 @@ func TestIPKLineWithoutAnIndexKeyLoads(t *testing.T) {
 	c, err := parse(t, `
 version: 1
 feed:
-  name: podkop-updater
-  url: https://github.com/VizzleTF/podkop_autoupdater
+  name: example-daemon
+  url: https://github.com/someone/example-daemon
 releases:
   - line: "25.12"
     default: true
@@ -286,7 +286,7 @@ releases:
 publish:
   - target: github-pages
 packages:
-  - name: podkop-updater
+  - name: example-daemon
     build: mkpkg
     arch: [x86_64]
     version: 1.2.3-r1

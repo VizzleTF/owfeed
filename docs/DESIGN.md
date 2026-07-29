@@ -69,9 +69,16 @@ verifies the package against a SHA-256 in an already-trusted `packages.adb`. A l
 to `--allow-untrusted` forever.
 
 **OpenWrt never signs individual packages, but `apk mkpkg --sign-key` works.** So
-owfeed signs each one. It is free, and it fixes `apk add ./file.apk` without a flag —
-and LuCI's "Upload Package", which physically cannot pass `--allow-untrusted` because
+owfeed signs each one by default. It fixes `apk add ./file.apk` without a flag — and
+LuCI's "Upload Package", which physically cannot pass `--allow-untrusted` because
 `package-manager-call` swallows unknown flags. Nobody else does this.
+
+It is a default rather than a rule, because it is not free for every feed. A feed
+carrying other people's work puts its own signature inside their artifact by doing it,
+and `signing.sign-packages: false` declines that. Trust is unaffected: it comes from
+the signed index, and installing, upgrading and removing by name were measured working
+with no package signature at all. What is given up is the two paths above — the same
+two that never worked for OpenWrt's own packages.
 
 **`arch: all` is rejected; the value is `noarch`.** **After `~` only hex is legal**,
 because that position is a commit hash. **Never `-C zstd`**: OpenWrt builds apk with

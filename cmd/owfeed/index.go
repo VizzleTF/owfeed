@@ -137,7 +137,8 @@ func (a *app) index(ctx context.Context, args []string) error {
 
 			res, err := index.Build(ctx, tool, index.Options{
 				Dir: dir, TrustDir: trustDir, Signer: signer,
-				Description: c.Feed.Title,
+				Description:      c.Feed.Title,
+				UnsignedPackages: !*c.Signing.SignPackages,
 			})
 			if err != nil {
 				return wrap(exitIndex, err)

@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Legal, privacy and disclaimer — owfeed</title>
+<meta name="description" content="What owfeed and the owfeed-packages feed do and do not vouch for, who is responsible for a package, what data this site processes, and where to send a complaint.">
+<link rel="canonical" href="https://owfeed.org/legal/">
+<link rel="alternate" hreflang="en" href="https://owfeed.org/legal/">
+<link rel="alternate" hreflang="ru" href="https://owfeed.org/legal/ru/">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<div class="shell">
+
+<aside class="side">
+<a class="brand" href="/"><b>owfeed</b>.org</a>
+<p class="tagline">Signed package feeds for OpenWrt, on both release lines.</p>
+<nav>
+<h3>Start</h3>
+<ul>
+  <li><a href="/">Overview</a></li>
+  <li><a href="/install/">Install a package</a></li>
+</ul>
+<h3>Publish</h3>
+<ul>
+  <li><a href="/cookbook/">Ship your package</a></li>
+  <li><a href="/reference/">Commands and config</a></li>
+  <li><a href="/problems/">When something breaks</a></li>
+</ul>
+<h3>Source</h3>
+<ul class="source">
+  <li><a href="https://github.com/owfeed/owlab">owlab</a></li>
+  <li><a href="https://github.com/owfeed/owfeed">owfeed</a></li>
+  <li><a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a></li>
+  <li><a href="/legal/" class="here">Legal and privacy</a></li>
+</ul>
+<p class="lang"><span class="here">EN</span> · <a href="/legal/ru/">RU</a></p>
+</nav>
+</aside>
+
+<main class="page">
+
+<p class="kicker">Legal</p>
+<h1>Disclaimer, privacy and complaints</h1>
+<p class="lead">What this project vouches for, what it does not, who is responsible for a package,
+what data this site processes, and where to send a complaint. Plain statements, not a contract of
+adhesion.</p>
+
+<h2>No warranty, and use at your own risk</h2>
+
+<p><strong>Everything here is provided as-is, with no warranty of any kind</strong> — express or
+implied, including merchantability, fitness for a particular purpose and non-infringement. This is
+the same term the licences already carry: owfeed is Apache-2.0, owlab is GPL-2.0-only, and every
+package in the feed has its own.</p>
+
+<p>To the maximum extent permitted by applicable law, no liability is accepted for any damage,
+loss of data, loss of use, device malfunction or any other harm arising from the software, the
+feed, or these pages. You run this on your own equipment, at your own risk, and you decide whether
+to trust it.</p>
+
+<h2>The tools do not know what your package is</h2>
+
+<p><code>owlab</code> starts test routers and runs assertions. <code>owfeed</code> packages a
+directory, signs artifacts and builds an index. Neither inspects what a package does, and neither
+has an opinion about it. They are build and distribution plumbing, in the same sense as
+<code>tar</code>, <code>make</code> or a web server.</p>
+
+<p>What you build with them, and whether it is lawful where you and your users are, is entirely
+your decision and your responsibility.</p>
+
+<h2>The feed distributes; the author is responsible</h2>
+
+<p><a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a> carries software written
+by other people. It is not rebuilt or modified here: what is distributed is what its author built
+and signed.</p>
+
+<p><strong>What the feed verifies:</strong> that a release came from the repository and tag pinned
+in this repository, that the author's signature over it checks against a key pinned in
+<code>keys/</code>, that the bytes match a recorded hash, and that the resulting tree installs on
+a stock OpenWrt image.</p>
+
+<p><strong>What the feed does not verify:</strong> what the code does; whether it is safe; whether
+it works or is fit for any purpose; whether it is lawful in any jurisdiction, including yours;
+whether its declared licence, description or other metadata are true.</p>
+
+<p>A feed signature means one thing: <em>these bytes are the ones this feed published, and they
+came from the author whose key is pinned here.</em> It is a statement about the channel and about
+provenance — not about content, quality, safety, legality or suitability.</p>
+
+<p>Responsibility for a package's contents, behaviour, security and lawfulness rests with
+<strong>its author</strong>, named in the package metadata and readable on the router with
+<code>apk info &lt;name&gt;</code>. Send questions and bug reports there.</p>
+
+<h2>Complaints and takedown</h2>
+
+<p>If you believe something distributed here is unlawful or infringes your rights, write to the
+address in <a href="/.well-known/security.txt"><code>/.well-known/security.txt</code></a> or open a
+private advisory on the relevant repository.</p>
+
+<h3>What a notice must contain</h3>
+
+<p>These are the elements Article 16 of the EU Digital Services Act requires, and they are what
+makes a notice actionable:</p>
+
+<ol>
+  <li>a substantiated explanation of why you believe the material is unlawful or infringing;</li>
+  <li>the exact location — package name and version, and the URL under
+      <code>repo.owfeed.org</code> if you have it;</li>
+  <li>your name and an email address, so the outcome can be sent to you;</li>
+  <li>a statement that you believe in good faith the notice is accurate and complete;</li>
+  <li>what right you hold or represent, for a copyright, trademark or licence claim.</li>
+</ol>
+
+<p>Receipt is confirmed by reply. Notices are handled in the order they arrive, by one person.</p>
+
+<h3>What happens next</h3>
+
+<p>A notice that names a package and states a ground gets that package <strong>suspended from the
+feed while it is looked at</strong>. The author is told, with the notice, and given the chance to
+respond. If the claim holds, or the author does not respond, the package stays out, and the reason
+goes in the commit that removes it.</p>
+
+<p>Disputes between an author and a claimant are not adjudicated here. A counter-statement is
+forwarded to the claimant; it does not by itself put the package back.</p>
+
+<h3>Repeat claims</h3>
+
+<p>An author whose packages are removed on repeated substantiated claims is removed from the feed
+and their signing key is unpinned. In practice that means two upheld claims, or an author who
+ignores forwarded notices. The removal is an ordinary commit and is visible in the history.</p>
+
+<p>The same address takes security reports about the site, the feed infrastructure and the tools.
+For a vulnerability <em>in a package</em>, contact its author first.</p>
+
+<h2>Privacy</h2>
+
+<h3>What this site is</h3>
+
+<p><code>owfeed.org</code> and <code>repo.owfeed.org</code> are static files served by GitHub
+Pages. There are no accounts, no cookies, no analytics, no trackers, no third-party scripts, no
+fonts or images loaded from anywhere else. Nothing on these pages profiles you and nothing follows
+you between visits.</p>
+
+<h3>What is processed anyway</h3>
+
+<p>Serving a page necessarily involves your IP address and the request your browser makes. That
+processing is done by <strong>GitHub, Inc.</strong> as the hosting provider, under
+<a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">its
+own privacy statement</a>. GitHub records such logs to keep the service running and secure.</p>
+
+<p>The operator of this site <strong>has no access to those logs</strong>, receives no copy of them
+and cannot identify visitors. No server-side logging, storage or analysis of visitor data is done
+by this project.</p>
+
+<h3>Installing from the feed</h3>
+
+<p>When a router runs <code>apk update</code> or <code>apk add</code>, it makes ordinary HTTPS
+requests to <code>repo.owfeed.org</code>. The same applies: GitHub sees the request, this project
+does not receive the logs. No telemetry, phone-home or usage reporting is built into any package
+published here by this project. What a third-party package does once installed is a matter for its
+author and its own documentation.</p>
+
+<h3>Contributions</h3>
+
+<p>Issues, pull requests and commits are public and permanent, and they carry the name and email
+address you configure in git. That is a property of publishing on GitHub, and it is worth deciding
+about before you send a contribution rather than after.</p>
+
+<h3>Your rights, and who to ask</h3>
+
+<p>Where the GDPR applies, the rights of access, rectification, erasure, restriction, objection and
+portability run against whoever holds the data. For server logs that is GitHub, and requests should
+go to GitHub. For anything published in this project's repositories — a commit, an issue, an email
+address in a git trailer — write to the address in
+<a href="/.well-known/security.txt"><code>security.txt</code></a>.</p>
+
+<h2>Trademarks</h2>
+
+<p>OpenWrt is a registered trademark of the Software Freedom Conservancy. ImmortalWrt, GitHub,
+GitLab and other names are the marks of their respective owners. This project is not affiliated
+with, endorsed by or sponsored by any of them, and package names carried by the feed belong to
+their authors.</p>
+
+<h2>Export control</h2>
+
+<p><code>owfeed</code> and <code>owlab</code> use cryptography only for digital signatures and
+hashes — verifying and producing signatures over indexes, packages and manifests — through the Go
+standard library. Neither implements cryptography, and neither provides confidentiality or
+encryption of data. Functions limited to authentication, digital signature, data integrity and
+non-repudiation fall outside Category 5 Part 2 of the US Commerce Control List and the equivalent
+EU dual-use category.</p>
+
+<p>This is a self-classification recorded so the question does not have to be answered from memory.
+It is not a determination by any authority. Anyone redistributing these tools, or software carried
+by the feed, in or into a sanctioned jurisdiction remains responsible for their own compliance.</p>
+
+<h2>Not legal advice</h2>
+
+<p>This page describes how the project works and what it does and does not claim. It is written by
+its maintainer, who is not a lawyer, and it is not legal advice to you. If your situation needs an
+answer that holds up, get one from someone qualified in your jurisdiction.</p>
+
+<footer>
+<p>Last updated 29 July 2026 ·
+<a href="/.well-known/security.txt">security.txt</a> ·
+<a href="https://github.com/owfeed/owfeed-packages/blob/main/LEGAL.md">the feed's licence and trademark notes</a></p>
+</footer>
+
+</main>
+</div>
+</body>
+</html>

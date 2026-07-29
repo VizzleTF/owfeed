@@ -1,0 +1,17 @@
+# owfeed.org — security and abuse contact (RFC 9116)
+#
+# This file covers owfeed.org and the feed at repo.owfeed.org.
+#
+# For a vulnerability in a PACKAGE carried by the feed, contact that package's
+# author first: their repository is in the package metadata and is readable on
+# the router with `apk info <name>`. The feed distributes other people's
+# software and cannot fix it.
+
+Contact: https://github.com/owfeed/owfeed-packages/security/advisories/new
+Contact: https://github.com/owfeed/owfeed/security/advisories/new
+Contact: mailto:vizzletf47@gmail.com
+Expires: 2027-07-29T00:00:00Z
+Preferred-Languages: en, ru
+Canonical: https://owfeed.org/.well-known/security.txt
+Policy: https://github.com/owfeed/owfeed-packages/blob/main/SECURITY.md
+Policy: https://github.com/owfeed/owfeed/blob/main/SECURITY.md

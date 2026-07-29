@@ -85,13 +85,13 @@ the directory; anything that can serve static files will do.
 
 ```
 feed/
-  podkop.pem                            your PUBLIC key
+  myfeed.pem                            your PUBLIC key
   releases/25.12/x86_64/
     packages.adb                        the signed index (binary)
     index.json                          the same thing as JSON
     sha256sums
-    podkop-0.28-r1.apk                  the packages, flat, beside the index
-    luci-app-podkop-0.28-r1.apk
+    netwatch-1.4.0-r1.apk                  the packages, flat, beside the index
+    luci-app-netwatch-1.4.0-r1.apk
   releases/25.12/aarch64_cortex-a53/    the same files again
   …                                     35 directories, one per architecture
 ```
@@ -101,12 +101,12 @@ feed/
 1. The user drops your `.pem` into `/etc/apk/keys/`. The router now trusts your signature.
 2. They write one line into `/etc/apk/repositories.d/<feed>.list` — the direct URL of `packages.adb`.
 3. `apk update` fetches that index and verifies it against your key.
-4. `apk add podkop` finds `podkop 0.28-r1` in the index, **derives the filename from the name and
-   version**, fetches `podkop-0.28-r1.apk` from the same directory, checks it against the hash the
+4. `apk add netwatch` finds `netwatch 1.4.0-r1` in the index, **derives the filename from the name and
+   version**, fetches `netwatch-1.4.0-r1.apk` from the same directory, checks it against the hash the
    index recorded, and installs it.
 
 **Where does it install to?** A package's payload *is* a piece of the root filesystem. What you put
-in `staging/podkop/etc/config/podkop` arrives at `/etc/config/podkop`.
+in `staging/netwatch/etc/config/netwatch` arrives at `/etc/config/netwatch`.
 
 **Why 35 copies of the same file?** In apk's `ndx` mode a router reads exactly one index — the one
 for its own architecture. A noarch package has to be in all of them. The copies are byte-identical.
@@ -329,8 +329,13 @@ owfeed refuses each of these. Every one has burned a real maintainer.
 
 ## Not there yet
 
-Cloudflare R2 and rsync · SBOM · key rotation commands · reusing an already-published package
-instead of re-signing it unchanged.
+Declared in the config schema so that writing them is a clear error rather than a silent
+no-op, but **not implemented**: `signing.keyring-package`, `retention:`, `overrides:`,
+`build.changed-only`, `version-from: git-describe`, and the `s3` and `rsync` publish targets.
+`github-pages` is the only target that works.
+
+Also absent: SBOM, key rotation commands, and reusing an already-published package instead of
+re-signing it unchanged.
 
 **SDK builds are not on this list, and are not coming.** owfeed packages, it does not compile.
 Build with [owlab](https://github.com/owfeed/owlab), `openwrt/gh-action-sdk`, or your own SDK
@@ -350,11 +355,15 @@ whole thing with a throwaway key, so a fork never comes near the feed's own.
 ## Someone else's CI, my feed
 
 A feed that carries other people's packages cannot hand them its signing key, and does not have to.
-Authors build and sign in their own CI and publish a signed release; the feed pulls, verifies the
-author's signature against a pinned key, and adds its own.
+Authors build and sign in their own CI and publish a signed release; the feed pulls and verifies the
+author's signature against a pinned key.
 
-apk signature blocks are additive, so the package a router installs carries **both** — the author's
-signature travels all the way to the device rather than being checked at ingest and discarded.
+What the feed signs after that is a choice. By default it signs each package too, and apk signature
+blocks are additive, so the file a router installs carries **both**. A feed that would rather not put
+its own signature inside somebody else's artifact sets `signing.sign-packages: false` and signs only
+the index — which is where a router takes its trust from either way. Installing, upgrading and
+removing by name work identically; what stops working is `apk add ./file.apk` and LuCI's Upload
+Package, both of which already need `--allow-untrusted` for OpenWrt's own packages.
 
 ```sh
 owfeed sign                       # in the author's CI, with the author's key
@@ -381,9 +390,6 @@ Release assets are flat, and an apk's filename carries no architecture — in a 
 *is* the directory. A package built for twenty architectures would therefore produce twenty files
 with one name, so `release` appends the architecture where names collide, and only where they
 collide: a noarch package keeps the filename an installer already on a router looks it up by.
-
-[podkop_autoupdater](https://github.com/VizzleTF/podkop_autoupdater/blob/main/RELEASING.md) is a
-worked example, including what its signing key does and does not vouch for.
 
 [The feed's CONTRIBUTING](https://github.com/owfeed/owfeed-packages/blob/main/CONTRIBUTING.md)
 walks through both sides.

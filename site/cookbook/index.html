@@ -34,6 +34,7 @@
   <li><a href="https://github.com/owfeed/owlab">owlab</a></li>
   <li><a href="https://github.com/owfeed/owfeed">owfeed</a></li>
   <li><a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a></li>
+  <li><a href="/legal/">Legal and privacy</a></li>
 </ul>
 <p class="lang"><span class="here">EN</span> · <a href="/cookbook/ru/">RU</a></p>
 </nav>
@@ -128,8 +129,8 @@ fork.</p>
   services: [docker:27-dind]
   variables: { DOCKER_HOST: tcp://docker:2375, DOCKER_TLS_CERTDIR: "" }
   script:
-    - wget -qO owlab https://github.com/owfeed/owlab/releases/latest/download/owlab-linux-amd64
-    - chmod +x owlab &amp;&amp; export PATH="$PWD:$PATH"
+    - wget -qO- https://github.com/owfeed/owlab/releases/download/v0.5.1/owlab_0.5.1_linux_amd64.tar.gz | tar xz
+    - export PATH="$PWD:$PATH"
     - owlab build --release 25.12.5
     - owlab test --release 25.12.5 --install 'dist/*/my-app-*'
   artifacts:
@@ -257,6 +258,7 @@ mistakes that cost people their upgrades.</p>
 <p>A worked example, end to end:
 <a href="https://github.com/VizzleTF/luci-theme-footstrap">luci-theme-footstrap</a>. ·
 Stuck? <a href="/problems/">When something breaks</a>.</p>
+<p><a href="/legal/">Disclaimer and privacy</a></p>
 </footer>
 
 </main>

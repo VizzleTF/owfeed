@@ -2,6 +2,30 @@
 
 Dates are when the tag was cut. Anything not listed is documentation or tests.
 
+## Unreleased
+
+- **Added:** `signing.sign-packages: false` now does what it says. The field was in the
+  config and in the published schema, but nothing read it -- `owfeed sign` signed every
+  package regardless. A feed that carries other people's work can now decline to put its
+  own signature inside their artifacts and sign only the index.
+
+  `owfeed sign` reports that it skipped them rather than doing it silently, and `--key`
+  still overrides: an author signing their own packages before a release is exactly the
+  case that must not be skipped. `owfeed index` passes `mkndx --allow-untrusted`, without
+  which mkndx refuses an unsigned package with `UNTRUSTED signature` and exit 99 and
+  writes no index at all. `owfeed doctor` no longer reports OWF303 in this mode, where the
+  absence of the feed's signature is the point rather than a defect.
+
+  Measured on OpenWrt 25.12.5 against a feed built this way, driving LuCI's own
+  `package-manager-call` rather than apk directly: the package appears in the Software
+  list, and Install, Upgrade and Remove all return 0. `/etc/apk/world` carries the bare
+  name with no content-hash pin, so upgrades resolve. Trust comes from the signed index;
+  the signature inside a package is never consulted on that path. What still fails is
+  `apk add ./file.apk` and LuCI's Upload Package -- there is no index to check against,
+  and `--allow-untrusted` is dropped by `package-manager-call`. Both already fail that way
+  for OpenWrt's own packages, which are unsigned individually. The reproduction is in
+  `docs/apk-behaviour.md`.
+
 ## v0.2.1 — 2026-07-29
 
 - **Fixed:** `owfeed version` said `dev` when the tool was installed the way the

@@ -8,9 +8,9 @@
 
 - [Самое простое, что работает](#самое-простое-что-работает)
 - [Тема LuCI: luci-theme-footstrap](#тема-luci-luci-theme-footstrap) — переводы
-- [Два пакета из одного репозитория: podkop](#два-пакета-из-одного-репозитория-podkop) — конфликты,
+- [Сервис и его LuCI-приложение из одного репозитория](#сервис-и-его-luci-приложение-из-одного-репозитория) — конфликты,
   реальные зависимости
-- [Скомпилированный бинарь: podkop-updater](#скомпилированный-бинарь-podkop-updater) — несколько архитектур
+- [Скомпилированный бинарь: статический Go-демон](#скомпилированный-бинарь-статический-go-демон) — несколько архитектур
 - [Обе релиз-линии из одного конфига](#обе-релиз-линии-из-одного-конфига) — apk и opkg
 
 ---
@@ -164,48 +164,47 @@ owfeed install-snippet
 
 ---
 
-## Два пакета из одного репозитория: podkop
+## Сервис и его LuCI-приложение из одного репозитория
 
-[podkop](https://github.com/itdoginfo/podkop) шипает из одного репозитория два пакета — сервис на
-shell-скриптах и LuCI-приложение к нему. Оба `PKGARCH:=all` с пустым `Build/Compile`, так что
-тулчейн не нужен ни одному. Это конфиг, который их собирает; проверен целиком на настоящем
-апстримном репозитории.
+Обычная форма для всего, у чего есть страница настроек: сервис на shell-скриптах и LuCI-приложение
+к нему, в одном репозитории. Оба архитектурно независимы, `Build/Compile` пустой, тулчейн не нужен
+ни одному.
 
 ```yaml
 version: 1
 
 feed:
-  name: podkop
+  name: netwatch
   url: https://feed.example.org
-  title: podkop
-  maintainer: "ITDog <podkop@itdog.info>"
+  title: netwatch
+  maintainer: "Вы <you@example.org>"
   license: GPL-2.0-or-later
-  homepage: https://podkop.net
+  homepage: https://example.org/netwatch
 
 publish:
   - target: github-pages
 
 packages:
-  - name: podkop
+  - name: netwatch
     build: mkpkg
     arch: noarch
     version-from: file:./VERSION
-    files: ./staging/podkop
-    description: "Domain routing. Use of VLESS, Shadowsocks technologies"
-    depends: [sing-box, curl, jq, kmod-nft-tproxy, coreutils-base64, bind-dig]
-    conflicts: [https-dns-proxy, nextdns, luci-app-passwall, luci-app-passwall2]
-    conffiles: ["/etc/config/podkop"]
+    files: ./staging/netwatch
+    description: "Link monitoring daemon"
+    depends: [curl, jq, coreutils-base64, bind-dig]
+    conflicts: [othermon, luci-app-othermon]
+    conffiles: ["/etc/config/netwatch"]
 
-  - name: luci-app-podkop
+  - name: luci-app-netwatch
     build: mkpkg
     arch: noarch
     version-from: file:./VERSION
-    files: ./staging/luci-app-podkop
-    description: "LuCI podkop app"
-    depends: [luci-base, podkop]
+    files: ./staging/luci-app-netwatch
+    description: "LuCI netwatch app"
+    depends: [luci-base, netwatch]
     i18n:
-      from: ./luci-app-podkop/po
-      basename: podkop
+      from: ./luci-app-netwatch/po
+      basename: netwatch
 ```
 
 Подготовка — обычное копирование плюс подстановка версии, которую делают Makefile'ы:
@@ -213,17 +212,17 @@ packages:
 ```sh
 #!/bin/sh
 set -e
-VER="0.$(date +%d%m%Y)"; echo "$VER-r1" > VERSION
+VER="1.4.0"; echo "$VER-r1" > VERSION
 
-# luci-app-podkop: htdocs -> /www, root -> /
-mkdir -p staging/luci-app-podkop/www
-cp -a luci-app-podkop/htdocs/. staging/luci-app-podkop/www/
-cp -a luci-app-podkop/root/.   staging/luci-app-podkop/
+# luci-app-netwatch: htdocs -> /www, root -> /
+mkdir -p staging/luci-app-netwatch/www
+cp -a luci-app-netwatch/htdocs/. staging/luci-app-netwatch/www/
+cp -a luci-app-netwatch/root/.   staging/luci-app-netwatch/
 
-# podkop: files/ ложится 1:1, кроме usr/lib/* -> /usr/lib/podkop/
-mkdir -p staging/podkop/usr/lib/podkop
-cp -a podkop/files/etc podkop/files/usr/bin staging/podkop/
-cp -a podkop/files/usr/lib/.                staging/podkop/usr/lib/podkop/
+# netwatch: files/ ложится 1:1, кроме usr/lib/* -> /usr/lib/netwatch/
+mkdir -p staging/netwatch/usr/lib/netwatch
+cp -a netwatch/files/etc netwatch/files/usr/bin staging/netwatch/
+cp -a netwatch/files/usr/lib/.                  staging/netwatch/usr/lib/netwatch/
 
 grep -rl __COMPILED_VERSION_VARIABLE__ staging | xargs sed -i "s/__COMPILED_VERSION_VARIABLE__/$VER/g"
 ```
@@ -231,51 +230,50 @@ grep -rl __COMPILED_VERSION_VARIABLE__ staging | xargs sed -i "s/__COMPILED_VERS
 ```sh
 owfeed lock --update
 owfeed build && owfeed sign && owfeed index && owfeed doctor
-#   built dist/noarch/podkop-0.28072026-r1.apk
-#   built dist/noarch/luci-app-podkop-0.28072026-r1.apk
-#     note: compiled 1 translation catalogue(s): /usr/lib/lua/luci/i18n/podkop.ru.lmo
+#   built dist/noarch/netwatch-1.4.0-r1.apk
+#   built dist/noarch/luci-app-netwatch-1.4.0-r1.apk
+#     note: compiled 1 translation catalogue(s): /usr/lib/lua/luci/i18n/netwatch.ru.lmo
 #   25.12: 2 package(s) across 35 architecture(s)
 #   390 checks passed
 ```
 
-На роутере `apk add luci-app-podkop` вытягивает всю цепочку — `sing-box`, `curl`, `jq`,
-`kmod-nft-tproxy`, `coreutils-base64`, `bind-dig` — из официальных фидов и ставится **без**
-`--allow-untrusted`.
+На роутере `apk add luci-app-netwatch` вытягивает всю цепочку — `curl`, `jq`,
+`coreutils-base64`, `bind-dig` — из официальных фидов и ставится **без** `--allow-untrusted`.
 
 ### `conflicts:` делает то, чего не умеет официальная сборка
 
-Makefile podkop объявляет `CONFLICTS:=https-dns-proxy nextdns luci-app-passwall
-luci-app-passwall2`, потому что все они переписывают таблицу маршрутизации. На 25.12 это объявление
-не работает: `package-pack.mk` кладёт `Conflicts:` только в ipk-control и никогда не передаёт в
-`mkpkg`, так что собранный apk-пакет не несёт ничего.
+Два пакета, переписывающие одну и ту же конфигурацию, не могут стоять вместе, поэтому Makefile
+объявляет `CONFLICTS:=othermon luci-app-othermon`. На 25.12 это объявление не работает:
+`package-pack.mk` кладёт `Conflicts:` только в ipk-control и никогда не передаёт в `mkpkg`, так что
+собранный apk-пакет не несёт ничего.
 
 apk конфликты поддерживает — это зависимость с ведущим `!` — и owfeed их пишет:
 
 ```
 ERROR: unable to select packages:
-  https-dns-proxy-2026.05.06-r1:
-    breaks: podkop-0.28072026-r1[!https-dns-proxy]
+  othermon-2026.05.06-r1:
+    breaks: netwatch-1.4.0-r1[!othermon]
 ```
 
 ### Про `i18n.basename` здесь
 
-podkop объявляет `LUCI_LANGUAGES:=en ru`, из-за чего `luci.mk` выпускает отдельные пакеты
-`luci-i18n-podkop-<lang>`. Сложить каталоги внутрь `luci-app-podkop`, как делает конфиг выше,
+Пакет с `LUCI_LANGUAGES:=en ru` заставляет `luci.mk` выпускать отдельные пакеты
+`luci-i18n-netwatch-<lang>`. Сложить каталоги внутрь `luci-app-netwatch`, как делает конфиг выше,
 означает, что роутер, поставивший языковой пакет с прошлого релиза, уже владеет
-`/usr/lib/lua/luci/i18n/podkop.ru.lmo`. Либо продолжайте выпускать языковые пакеты, либо возьмите
+`/usr/lib/lua/luci/i18n/netwatch.ru.lmo`. Либо продолжайте выпускать языковые пакеты, либо возьмите
 basename, который не столкнётся, как сделала `luci-theme-footstrap`. owfeed за вас не угадает —
 `doctor` тоже не видит чужой пакет.
 
 ---
 
-## Скомпилированный бинарь: podkop-updater
+## Скомпилированный бинарь: статический Go-демон
 
 Статическому Go-бинарю не нужен OpenWrt SDK — нужна сборка под правильный таргет, — поэтому
 SDK-less путь не ограничен `noarch`. Один апстримный артефакт обычно покрывает несколько
 OpenWrt-архитектур с общим GOARCH: одна сборка `arm64` закрывает все четыре `aarch64_*`.
 
 ```yaml
-- name: podkop-updater
+- name: example-daemon
   build: mkpkg
   arch:
     - x86_64                 # GOARCH=amd64
@@ -285,9 +283,9 @@ OpenWrt-архитектур с общим GOARCH: одна сборка `arm64`
     - aarch64_generic
     - mipsel_24kc            # GOARCH=mipsle, GOMIPS=softfloat
     - mipsel_74kc
-  version-from: file:./staging/podkop-updater.version
-  files: ./staging/podkop-updater/{arch}
-  description: "Watches podkop releases and drives update and rollback from Telegram."
+  version-from: file:./staging/example-daemon.version
+  files: ./staging/example-daemon/{arch}
+  description: "Одна строка. LuCI обрезает после 512 байт."
 ```
 
 `{arch}` обязателен, как только архитектур больше одной. Две архитектуры не могут делить один

@@ -34,6 +34,7 @@
   <li><a href="https://github.com/owfeed/owlab">owlab</a></li>
   <li><a href="https://github.com/owfeed/owfeed">owfeed</a></li>
   <li><a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a></li>
+  <li><a href="/legal/ru/">Право и приватность</a></li>
 </ul>
 <p class="lang"><a href="/install/">EN</a> · <span class="here">RU</span></p>
 </nav>
@@ -70,7 +71,7 @@ echo "https://repo.owfeed.org/releases/25.12/$(cat /etc/apk/arch)/packages.adb" 
 printf '%s\n' /etc/apk/keys/owfeed-packages.pem \
   /etc/apk/repositories.d/owfeed-packages.list >> /etc/sysupgrade.conf
 
-apk update &amp;&amp; apk add podkop-updater</pre>
+apk update &amp;&amp; apk add luci-theme-footstrap</pre>
 
 <p>Третий шаг обязателен. Сами по себе эти файлы sysupgrade не переживают, а пропавший ключ —
 самая частая причина <code>UNTRUSTED signature</code> после обновления прошивки.</p>
@@ -85,7 +86,7 @@ wget https://repo.owfeed.org/9040356b214084da \
 echo "src/gz owfeed-packages https://repo.owfeed.org/releases/24.10/$(. /etc/openwrt_release; echo $DISTRIB_ARCH)" \
   >> /etc/opkg/customfeeds.conf
 
-opkg update &amp;&amp; opkg install podkop-updater</pre>
+opkg update &amp;&amp; opkg install luci-theme-footstrap</pre>
 
 <h2>Три вещи, на которых спотыкаются</h2>
 
@@ -101,14 +102,22 @@ opkg update &amp;&amp; opkg install podkop-updater</pre>
 <p>Фид подписывает свой индекс, и доверие идёт именно оттуда: apk проверяет индекс по ключу,
 который вы поставили, а потом сверяет каждый пакет с хешем, записанным в индексе.</p>
 
-<p>Это говорит: <em>фид ручается за эти байты</em>. Это не говорит, кто написал сам софт.
-Аккуратный фид проверяет подпись автора по заранее зафиксированному ключу и только потом
-добавляет свою — <a href="https://github.com/owfeed/owfeed-packages/blob/main/CONTRIBUTING_ru.md">owfeed-packages
-описывает, что именно он проверяет</a>. Прочитайте такую страницу у любого фида, прежде чем ему
-довериться.</p>
+<p>Это говорит: <em>это те байты, которые опубликовал фид</em>, и больше ничего. Это не значит, что
+программа безопасна, что она работает, что она законна там, где вы находитесь, или что кто-то
+смотрел, что она делает. Аккуратный фид проверяет подпись автора по заранее зафиксированному ключу
+и прямо пишет, что именно проверяет —
+<a href="https://github.com/owfeed/owfeed-packages/blob/main/SECURITY_ru.md">owfeed-packages так и
+делает</a>. Прочитайте такую страницу у любого фида, прежде чем ему довериться.</p>
 
-<p>Блоки подписей в apk складываются, поэтому пакет может нести и подпись автора, и подпись
-фида. Поставьте ещё и публичный ключ автора, и сможете проверить его напрямую.</p>
+<p>За то, что внутри пакета, отвечает его автор, а не фид.</p>
+
+<p>Несёт ли пакет собственную подпись — решает фид. Блоки подписей в apk складываются, поэтому
+пакет может нести сразу и авторскую, и фидовую, а фид может и не добавлять свою, оставив файл
+автора ровно таким, каким он его собрал. На установку по имени это не влияет никак: роутер
+проверяет подписанный индекс.</p>
+
+<p><a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a> подписывает только
+индекс, поэтому вы ставите файл самого автора.</p>
 
 <h2>Как отключить фид</h2>
 
@@ -123,10 +132,17 @@ opkg update</pre>
 
 <p>Уже установленные пакеты останутся. Обновления к ним приходить перестанут.</p>
 
+<div class="note"><strong>Пакеты — чужие программы, вы ставите их на свой риск.</strong> Фид
+проверяет, откуда пакет пришёл и что он устанавливается. Он не проверяет код, не оценивает его
+безопасность и не судит о законности там, где вы находитесь: за содержимое пакета отвечает его
+автор, которого покажет <code>apk info &lt;name&gt;</code>.
+<a href="/legal/ru/">Полная формулировка здесь.</a></div>
+
 <footer>
 <p>В примерах используется фид
 <a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a>. У других фидов свой
 ключ и свой URL, а форма команд та же.</p>
+<p><a href="/legal/ru/">Отказ от гарантий и приватность</a></p>
 </footer>
 
 </main>

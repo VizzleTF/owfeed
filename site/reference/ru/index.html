@@ -34,6 +34,7 @@
   <li><a href="https://github.com/owfeed/owlab">owlab</a></li>
   <li><a href="https://github.com/owfeed/owfeed">owfeed</a></li>
   <li><a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a></li>
+  <li><a href="/legal/ru/">Право и приватность</a></li>
 </ul>
 <p class="lang"><a href="/reference/">EN</a> · <span class="here">RU</span></p>
 </nav>
@@ -76,7 +77,19 @@
   --assert 'http 200 /cgi-bin/luci/admin/services/mine' \
   --assert 'service mined' \
   --assert 'uci mine.@mine[0].enabled' \
-  --assert 'package my-app'</pre>
+  --assert 'package my-app' \
+  --assert 'file /usr/share/rpcd/acl.d/my-app.json' \
+  --assert 'exec pgrep mined | grep -q .'</pre>
+
+<table>
+<tr><th>Вид</th><th>Проходит, когда</th></tr>
+<tr><td><code>http &lt;код&gt; &lt;путь&gt;</code></td><td>Страница отвечает этим кодом и не является страницей ошибки. <code>2xx</code> задаёт класс.</td></tr>
+<tr><td><code>service &lt;имя&gt;</code></td><td><code>/etc/init.d/&lt;имя&gt; running</code> подтверждает это, либо ubus.</td></tr>
+<tr><td><code>package &lt;имя&gt;</code></td><td>Пакетный менеджер роутера считает его установленным.</td></tr>
+<tr><td><code>uci &lt;путь&gt;</code></td><td>Значение выставлено — так проверяют, что <code>uci-defaults</code> пакета отработали.</td></tr>
+<tr><td><code>file &lt;путь&gt;</code></td><td>Путь существует на роутере.</td></tr>
+<tr><td><code>exec &lt;команда&gt;</code></td><td>Команда вернула 0.</td></tr>
+</table>
 
 <p><code>--feed URL</code> вместе с <code>--feed-key FILE</code> ставит пакет по имени из
 подписанного индекса, а не из файла. <code>--keep</code> оставляет роутеры поднятыми,
@@ -125,9 +138,9 @@ defaults:                     # подмешивается в каждый ро�
   packages: ["+luci-app-sqm", "-ppp"]
   fixtures: [all]             # выдумать сети, клиентов, аренды DHCP
   extra_packages:             # поставить по URL, а не из фида
-    - name: luci-app-podkop
-      apk: https://…/luci-app-podkop-0.7.21-r1.apk
-      ipk: https://…/luci-app-podkop-v0.7.21-r1-all.ipk
+    - name: luci-app-example
+      apk: https://…/luci-app-example-1.4.0-r1.apk
+      ipk: https://…/luci-app-example-v1.4.0-r1-all.ipk
 
 routers:
   - id: owrt2512
@@ -161,7 +174,7 @@ releases:
 signing:
   key: env:OWFEED_SIGN_KEY    # EC prime256v1, подписывает индексы и пакеты apk
   usign-key: env:OWFEED_USIGN_KEY   # usign, подписывает индексы opkg
-  sign-packages: true
+  sign-packages: true         # false: подписывать только индекс, не чужие файлы
 
 packages:
   - name: luci-app-mine
@@ -184,7 +197,7 @@ packages:
 <table>
 <tr><th>Переменная</th><th>Чья</th><th>Зачем</th></tr>
 <tr><td><code>OWFEED_SIGN_KEY</code></td><td>owfeed</td><td>Ключ EC, которым подписываются индексы и пакеты apk.</td></tr>
-<tr><td><code>OWFEED_USIGN_KEY</code></td><td>owfeed</td><td>Ключ usign, которым подписываются индексы opkg.</td></tr>
+<tr><td><code>OWFEED_USIGN_KEY</code></td><td>owfeed</td><td>Ключ usign, которым подписываются индексы opkg. Это только соглашение: <code>signing.usign-key</code> называет любую переменную, значения по умолчанию нет.</td></tr>
 <tr><td><code>OWFEED_RELEASE_KEY</code></td><td>owfeed</td><td>Ключ usign, которым подписывается манифест релиза.</td></tr>
 <tr><td><code>OWFEED_RELEASE_DATE</code></td><td>owfeed</td><td>Задать время в манифесте, чтобы сборка была воспроизводимой.</td></tr>
 <tr><td><code>OWLAB_CONFIG</code></td><td>owlab</td><td>Где лежит <code>owlab.yaml</code>.</td></tr>
@@ -200,6 +213,7 @@ packages:
 <table>
 <tr><th>Код</th><th>Что значит</th></tr>
 <tr><td>0</td><td>Успех</td></tr>
+<tr><td>1</td><td>Внутренняя ошибка — баг либо то, что инструмент не смог классифицировать</td></tr>
 <tr><td>2</td><td>Ошибка в конфиге</td></tr>
 <tr><td>3</td><td>Сборка не удалась</td></tr>
 <tr><td>4</td><td>Проблема с ключом</td></tr>
@@ -271,6 +285,7 @@ id, поэтому для opkg важно <em>имя</em> файла ключа.
 <a href="https://github.com/owfeed/owlab/blob/main/docs/reference_ru.md">owlab docs/reference_ru.md</a> ·
 <a href="https://github.com/owfeed/owfeed/blob/main/docs/manifest-format.md">формат манифеста</a> ·
 <a href="https://github.com/owfeed/owfeed/blob/main/docs/apk-behaviour.md">проверенное поведение apk и opkg</a></p>
+<p><a href="/legal/ru/">Отказ от гарантий и приватность</a></p>
 </footer>
 
 </main>

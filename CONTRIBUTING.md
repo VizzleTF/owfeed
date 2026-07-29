@@ -44,6 +44,17 @@ must stay quiet about.
 
 ## Things that need care
 
+**Documentation describes packaging, not what packages are for.** This is a build and
+distribution tool, in the same category as `tar` or a web server, and its documentation
+stays on that side of the line. Examples name a generic package — `luci-app-example`,
+`example-daemon` — and describe a mechanism: two packages from one repository, a conflict,
+a translation catalogue. They do not describe what any particular software is used for,
+and they do not link to a third-party project as an endorsement.
+
+The reason is narrow and worth stating: a tool that stays neutral is judged as a tool. One
+whose documentation reads as advocacy for a particular use invites the question of whether
+the tool exists for that use. Nothing is gained by answering it.
+
 **Never commit a key.** `.gitignore` covers `*.pem`, `*.key` and `*.sec`, and
 `owfeed keygen` refuses to write inside a git working tree without `--force`. A
 published signing key cannot be revoked.

@@ -10,6 +10,7 @@ Key facts that are easy to get wrong:
 - apk does not follow HTTP redirects.
 - `/etc/apk/keys/*.pem` does not survive sysupgrade unless listed in `/etc/sysupgrade.conf`.
 - `owfeed` never compiles sources. Compilation belongs to `owlab build` or the OpenWrt SDK.
+- A feed signature states provenance and channel only — that these bytes are what the feed published, from the author whose key is pinned. It is not a statement about a package's contents, safety, quality or legality; responsibility for those rests with the package's author.
 - Sign before indexing: signing appends bytes to a package.
 
 ## Docs
@@ -19,6 +20,7 @@ Key facts that are easy to get wrong:
 - [Ship your package](https://owfeed.org/cookbook/): for package authors — build, test, sign a release, get into a feed, add the 25.12 line to an existing 24.10 package
 - [Commands and config](https://owfeed.org/reference/): every owlab and owfeed command, the fields of owlab.yaml and owfeed.yml, environment variables, exit codes, glossary
 - [When something breaks](https://owfeed.org/problems/): symptom, cause, fix
+- [Legal, privacy and disclaimer](https://owfeed.org/legal/): what the tools and the feed do and do not vouch for, who is responsible for a package, what data the site processes, where to send a complaint
 - [owfeed.yml JSON Schema](https://owfeed.org/schema/v1.json): generated from the code; the authoritative config reference
 
 ## Repositories

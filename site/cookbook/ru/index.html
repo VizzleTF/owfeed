@@ -34,6 +34,7 @@
   <li><a href="https://github.com/owfeed/owlab">owlab</a></li>
   <li><a href="https://github.com/owfeed/owfeed">owfeed</a></li>
   <li><a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a></li>
+  <li><a href="/legal/ru/">Право и приватность</a></li>
 </ul>
 <p class="lang"><a href="/cookbook/">EN</a> · <span class="here">RU</span></p>
 </nav>
@@ -129,8 +130,8 @@ jobs:
   services: [docker:27-dind]
   variables: { DOCKER_HOST: tcp://docker:2375, DOCKER_TLS_CERTDIR: "" }
   script:
-    - wget -qO owlab https://github.com/owfeed/owlab/releases/latest/download/owlab-linux-amd64
-    - chmod +x owlab &amp;&amp; export PATH="$PWD:$PATH"
+    - wget -qO- https://github.com/owfeed/owlab/releases/download/v0.5.1/owlab_0.5.1_linux_amd64.tar.gz | tar xz
+    - export PATH="$PWD:$PATH"
     - owlab build --release 25.12.5
     - owlab test --release 25.12.5 --install 'dist/*/my-app-*'
   artifacts:
@@ -258,6 +259,7 @@ owlab test  --release 25.12.5 --install 'dist/*/my-app-*'</pre>
 <p>Живой пример целиком:
 <a href="https://github.com/VizzleTF/luci-theme-footstrap">luci-theme-footstrap</a>. ·
 Застряли? <a href="/problems/ru/">Если сломалось</a>.</p>
+<p><a href="/legal/ru/">Отказ от гарантий и приватность</a></p>
 </footer>
 
 </main>

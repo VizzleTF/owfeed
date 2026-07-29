@@ -105,6 +105,19 @@ type Options struct {
 	Signer   Signer
 	// Description is the index's own description field.
 	Description string
+	// UnsignedPackages indexes packages the feed did not sign.
+	//
+	// mkndx refuses a package it cannot verify -- "UNTRUSTED signature", exit 99 --
+	// so a feed that leaves per-package signing to the authors has to say so. The
+	// index itself is still signed, and that is where a router's trust comes from:
+	// it verifies the index against the key in /etc/apk/keys and then checks each
+	// package against the hash the index recorded. Measured on 25.12.5: install,
+	// upgrade and remove by name all succeed with no package signature present.
+	//
+	// What it costs is `apk add ./file.apk` and LuCI's Upload Package, which have
+	// no index to check against. Both already require --allow-untrusted for
+	// OpenWrt's own packages, which are unsigned individually.
+	UnsignedPackages bool
 }
 
 // Result describes a built index.
@@ -129,10 +142,17 @@ func Build(ctx context.Context, tool *apk.Tool, opts Options) (*Result, error) {
 		// Trust the feed's own key, so mkndx checks every package signature rather
 		// than being told to ignore them.
 		"--keys-dir", apk.TrustDirRef(),
+	}
+	if opts.UnsignedPackages {
+		// Only reachable when the feed deliberately does not sign packages. The
+		// index is still signed below; this says nothing about it.
+		args = append(args, "--allow-untrusted")
+	}
+	args = append(args,
 		"mkndx",
 		"--sign-key", apk.KeyRef(opts.Signer.KeyName),
 		"--output", IndexFile,
-	}
+	)
 	if opts.Description != "" {
 		args = append(args, "--description", opts.Description)
 	}

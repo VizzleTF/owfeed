@@ -587,6 +587,13 @@ func checkIndexDir(ctx context.Context, r *Report, in Input, dir string, arches 
 	if idx.Format != feedindex.APK {
 		return nil
 	}
+	// A feed that deliberately leaves packages as their authors built them has
+	// nothing here to find. The claim it makes is about the index, which 4xx
+	// checks, and the absence of its own signature inside somebody else's file is
+	// the point rather than a defect.
+	if in.Config != nil && in.Config.Signing.SignPackages != nil && !*in.Config.Signing.SignPackages {
+		return nil
+	}
 	pkgs, err := index.Packages(dir)
 	if err != nil {
 		return err
