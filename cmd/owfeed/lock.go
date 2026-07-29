@@ -8,6 +8,8 @@ import (
 
 	"owfeed.org/owfeed/internal/arch"
 	"owfeed.org/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/keyring"
+	"owfeed.org/owfeed/internal/keys"
 	"owfeed.org/owfeed/internal/lock"
 )
 
@@ -84,7 +86,58 @@ func (a *app) derive(ctx context.Context, c *config.Config) (*lock.Lock, error) 
 	if l.Toolchain.SDKRelease == "" && len(l.Releases) > 0 {
 		l.Toolchain.SDKRelease = l.Releases[0].Point
 	}
+
+	if err := a.deriveKeyring(c, l); err != nil {
+		return nil, err
+	}
 	return l, nil
+}
+
+// deriveKeyring records the keyring package's version for the signing key in use.
+//
+// The version must change when the key changes and must never go backwards, and a
+// value computed from the key alone cannot do both: identities are hashes, so the next
+// one sorts below the current about half the time, and a keyring package whose version
+// went down is one no router will install — which is exactly the moment a rotation has
+// to work.
+//
+// So it counts. The minor number goes up by one each time the key changes, and the
+// previous value is read from the lockfile that is already on disk. A feed that
+// rebuilds without rotating keeps the same version and publishes no upgrade for a
+// package whose contents did not change.
+func (a *app) deriveKeyring(c *config.Config, l *lock.Lock) error {
+	if !*c.Signing.KeyringPackage {
+		return nil
+	}
+	// No key available is not an error here: `owfeed lock --update` is run by people
+	// who have no reason to hold the signing key, and refusing them the architecture
+	// matrix over a package they are not building would be the wrong trade. The
+	// keyring entry is then left as it was.
+	key, err := a.signingKey(c)
+	if err != nil {
+		if prev, prevErr := lock.Load(a.lockPath()); prevErr == nil {
+			l.Keyring = prev.Keyring
+		}
+		return nil
+	}
+	id, err := keys.IdentityOf(&key.PublicKey)
+	if err != nil {
+		return wrap(exitKey, err)
+	}
+
+	minor := 0
+	if prev, err := lock.Load(a.lockPath()); err == nil && prev.Keyring != nil {
+		if prev.Keyring.Identity == id.String() {
+			l.Keyring = prev.Keyring
+			return nil
+		}
+		minor = keyring.MinorOf(prev.Keyring.Version)
+	}
+	l.Keyring = &lock.Keyring{
+		Identity: id.String(),
+		Version:  keyring.VersionFor(minor + 1),
+	}
+	return nil
 }
 
 // pointFor resolves a release line to the concrete point release to build against.

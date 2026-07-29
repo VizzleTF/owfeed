@@ -154,6 +154,19 @@ type Signing struct {
 	// apk verifies EC prime256v1, so a feed serving both release lines signs each
 	// with the scheme its package manager understands.
 	UsignKey string `yaml:"usign-key"`
+	// AlsoSign are additional keys the index is signed with, as "env:VAR" or
+	// "file:PATH". Empty outside a rotation.
+	//
+	// Rotation needs an overlap or it cannot start at all. The keyring package
+	// delivers the new key through `apk upgrade`, but a router can only fetch it from
+	// an index it already trusts — so an index signed by the new key alone is one the
+	// subscriber rejects, and the package that would have fixed that is behind it.
+	// Measured on 25.12.5: the upgrade returns UNTRUSTED signature and the rotation
+	// never begins.
+	//
+	// With both keys here the index carries both signatures, everyone keeps working,
+	// and the entry is removed once subscribers have had time to upgrade.
+	AlsoSign []string `yaml:"also-sign"`
 	// AuthorKeys is a directory of pinned author public keys. When set, every
 	// package published must carry a signature by one of them.
 	//

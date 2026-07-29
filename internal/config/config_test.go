@@ -175,15 +175,29 @@ func TestRejects(t *testing.T) {
 	}
 }
 
-// The default is on because that is where the design goes, but a user who explicitly
-// asked for a keyring package must be told it is not built rather than assume it was.
-func TestKeyringPackageOnlyErrorsWhenAskedFor(t *testing.T) {
-	if _, err := parse(t, minimal); err != nil {
+// Accepted both ways round now that the package is built. The default is on, and
+// asking for it explicitly must not be an error — it was one for as long as the field
+// was declared and unimplemented, and a test that still expected that would be
+// asserting the old behaviour rather than the current one.
+func TestKeyringPackageAccepted(t *testing.T) {
+	c, err := parse(t, minimal)
+	if err != nil {
 		t.Fatalf("default keyring-package should not error: %v", err)
 	}
+	if c.Signing.KeyringPackage == nil || !*c.Signing.KeyringPackage {
+		t.Error("keyring-package should default to on")
+	}
 	src := strings.Replace(minimal, "publish:", "signing:\n  keyring-package: true\npublish:", 1)
-	if _, err := parse(t, src); err == nil {
-		t.Error("explicitly requesting keyring-package should report that it is not implemented")
+	if _, err := parse(t, src); err != nil {
+		t.Errorf("explicitly requesting keyring-package: %v", err)
+	}
+	src = strings.Replace(minimal, "publish:", "signing:\n  keyring-package: false\npublish:", 1)
+	c, err = parse(t, src)
+	if err != nil {
+		t.Fatalf("turning keyring-package off: %v", err)
+	}
+	if c.Signing.KeyringPackage == nil || *c.Signing.KeyringPackage {
+		t.Error("keyring-package: false should be honoured")
 	}
 }
 

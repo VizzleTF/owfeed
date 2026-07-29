@@ -44,7 +44,7 @@
 
 <p class="kicker">Справочник</p>
 <h1>Команды и конфиг</h1>
-<p class="lead">Страница для поиска. Актуально для owlab v0.5.1 и owfeed v0.3.3. Полное описание
+<p class="lead">Страница для поиска. Актуально для owlab v0.5.1 и owfeed v0.4.0. Полное описание
 конфига — <a href="/schema/v1.json">schema/v1.json</a>: он генерируется из кода, и его же читает
 ваш редактор.</p>
 
@@ -176,6 +176,8 @@ signing:
   usign-key: env:OWFEED_USIGN_KEY   # usign, подписывает индексы opkg
   sign-packages: true         # false: подписывать только индекс, не чужие файлы
   author-keys: ./keys         # каждый пакет обязан быть подписан ключом отсюда
+  keyring-package: true       # выпускает <feed>-keyring, который везёт ключ на роутеры
+  also-sign: []               # на время ротации: старый ключ, чтобы подписи ехали обе
 
 packages:
   - name: luci-app-mine

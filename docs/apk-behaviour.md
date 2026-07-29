@@ -345,6 +345,38 @@ from the repository, and `/etc/apk/world` survives sysupgrade. Documentation mus
 therefore never offer local installation as the way to install from a feed. (The
 hash is base64, not hex as the design assumed — the behaviour is what matters.)
 
+### A keyring package cannot start a rotation on its own
+
+The package that carries a feed's next public key is fetched from the feed, and the
+feed's index is signed by the key it is rotating to. A subscriber holding only the old
+key therefore cannot reach it:
+
+```sh
+# index signed by the NEW key only; router holds the OLD one
+/usr/libexec/package-manager-call upgrade krfeed-keyring
+#   { "code": 0, "stderr": "WARNING: opening .../packages.adb: UNTRUSTED signature" }
+#   keys afterwards: unchanged
+```
+
+The upgrade reports success and changes nothing, which is the worst shape this failure
+could take. With an overlap it works, and the same router needs no other help:
+
+```sh
+# index signed by BOTH keys
+apk update                       # OK: 11157 distinct packages available
+/usr/libexec/package-manager-call upgrade krfeed-keyring
+#   { "code": 0, "stdout": "(1/1) Upgrading krfeed-keyring (1.3-r1 -> 1.4-r1)" }
+#   keys afterwards: the new one, delivered by the package
+```
+
+Dropping the old key from the config afterwards leaves an index signed by the new key
+alone, which that router now verifies. The old public key can then be removed from
+`/etc/apk/keys` — measured: `apk update` still answers OK with only the new one
+present.
+
+So the keyring package and the overlap are one mechanism, not two features. Shipping
+either alone leaves a feed that cannot rotate.
+
 ### An unsigned package installs, upgrades and removes from a signed index
 
 The whole LuCI lifecycle works with no package signature at all, as long as the

@@ -103,6 +103,16 @@ type Options struct {
 	// signatures the signing step produced.
 	TrustDir string
 	Signer   Signer
+	// AlsoSign are additional keys the index is signed with, for a rotation window.
+	//
+	// mkndx accepts a repeated --sign-key and the resulting index carries every
+	// signature, so a subscriber holding either the old or the new key keeps working
+	// while the keyring package delivers the replacement. Without an overlap the new
+	// index is signed by a key no router has yet, the index fails verification, and
+	// the very package that would have carried the new key becomes unreachable —
+	// measured on 25.12.5, where the upgrade returned UNTRUSTED signature and the
+	// rotation could not start.
+	AlsoSign []Signer
 	// Description is the index's own description field.
 	Description string
 	// UnsignedPackages indexes packages the feed did not sign.
@@ -148,11 +158,11 @@ func Build(ctx context.Context, tool *apk.Tool, opts Options) (*Result, error) {
 		// index is still signed below; this says nothing about it.
 		args = append(args, "--allow-untrusted")
 	}
-	args = append(args,
-		"mkndx",
-		"--sign-key", apk.KeyRef(opts.Signer.KeyName),
-		"--output", IndexFile,
-	)
+	args = append(args, "mkndx", "--sign-key", apk.KeyRef(opts.Signer.KeyName))
+	for _, s := range opts.AlsoSign {
+		args = append(args, "--sign-key", apk.KeyRef(s.KeyName))
+	}
+	args = append(args, "--output", IndexFile)
 	if opts.Description != "" {
 		args = append(args, "--description", opts.Description)
 	}
@@ -180,6 +190,12 @@ func Build(ctx context.Context, tool *apk.Tool, opts Options) (*Result, error) {
 	signers, err := Signatures(ctx, tool, opts.Dir, IndexFile)
 	if err != nil {
 		return nil, err
+	}
+	for _, s := range opts.AlsoSign {
+		if !contains(signers, s.Identity.String()) {
+			return nil, fmt.Errorf("%s carries no signature by the additional key %s (found: %s)",
+				IndexFile, s.Identity, strings.Join(signers, ", "))
+		}
 	}
 	if !contains(signers, opts.Signer.Identity.String()) {
 		return nil, fmt.Errorf("%s is not signed by key %s (found: %s)",

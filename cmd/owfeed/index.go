@@ -125,6 +125,26 @@ func (a *app) index(ctx context.Context, args []string) error {
 		return wrap(exitKey, err)
 	}
 
+	// Rotation keys go into the SAME directory: mkndx resolves every --sign-key
+	// against one --keys-dir, so a second key staged anywhere else is simply not found.
+	var alsoSign []index.Signer
+	for i, spec := range c.Signing.AlsoSign {
+		k, err := keys.Source(spec).Load(a.root())
+		if err != nil {
+			return wrap(exitKey, err)
+		}
+		name := fmt.Sprintf("also-%d.pem", i)
+		if err := keys.WriteInto(keyDir, name, k); err != nil {
+			return wrap(exitKey, err)
+		}
+		s, err := index.NewSigner(keyDir, name, k)
+		if err != nil {
+			return wrap(exitKey, err)
+		}
+		alsoSign = append(alsoSign, s)
+		a.logf("rotation: the index will also be signed by %s", s.Identity)
+	}
+
 	seenLine := map[string]bool{}
 
 	for _, r := range apkLines {
@@ -188,6 +208,7 @@ func (a *app) index(ctx context.Context, args []string) error {
 			res, err := index.Build(ctx, tool, index.Options{
 				Dir: dir, TrustDir: trustDir, Signer: signer,
 				Description:      c.Feed.Title,
+				AlsoSign:         alsoSign,
 				UnsignedPackages: !*c.Signing.SignPackages,
 			})
 			if err != nil {

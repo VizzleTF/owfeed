@@ -71,6 +71,19 @@ func StageDir(parent, name string, key *ecdsa.PrivateKey) (string, error) {
 	return dir, nil
 }
 
+// WriteInto adds another private key to a directory StageDir already created.
+//
+// mkndx resolves every --sign-key against a single --keys-dir, so the keys of a
+// rotation window have to share one directory. Same permissions as StageDir's, for the
+// same reason: this is a private key on disk, however briefly.
+func WriteInto(dir, name string, key *ecdsa.PrivateKey) error {
+	pem, err := MarshalPrivate(key)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, name), pem, 0o600)
+}
+
 // StagePublic writes a public key into its own directory for apk to trust, and
 // returns that directory.
 //

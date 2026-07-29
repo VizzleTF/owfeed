@@ -2,6 +2,39 @@
 
 Dates are when the tag was cut. Anything not listed is documentation or tests.
 
+## v0.4.0 — 2026-07-29
+
+- **Added:** `signing.keyring-package` builds the package that carries a feed's public
+  key to routers, and `signing.also-sign` signs the index with more than one key. They
+  are one mechanism, and shipping either alone leaves a feed that still cannot rotate.
+
+  apk has no revocation, so the only thing owfeed can offer is making rotation cheap
+  enough that a feed actually does it. A key installed by hand can only be replaced by
+  hand, on every subscriber's router — which in practice means never.
+
+  The measured trap is that a keyring package cannot start a rotation on its own. It is
+  fetched from the feed, and the feed's index is signed by the key being rotated to, so
+  a subscriber holding only the old key cannot reach it: the upgrade returns `UNTRUSTED
+  signature`, reports success, and changes nothing. With both keys signing the index the
+  same router upgrades normally and receives the new key; the old one can then be
+  dropped from the config and from `/etc/apk/keys`. The whole sequence is reproduced in
+  `docs/apk-behaviour.md`.
+
+  The keyring version lives in `owfeed.lock`, not in the key. A version derived from the
+  key changes when the key changes and sorts below the previous one about half the time,
+  and a keyring package whose version went backwards is one no router installs — at
+  exactly the moment rotation has to work. So it counts, the count is recorded, and a
+  signing key that disagrees with the record stops the build rather than republishing
+  the new key under the old version.
+
+  The payload is named for the key's own identity, so a second key is added beside the
+  first rather than overwriting it. apk matches keys by identity and ignores filenames,
+  which is what lets both sit there during the window.
+
+- **Changed:** `signing.keyring-package: true` is no longer an error. It was declared,
+  defaulted to on, and rejected when asked for explicitly, for as long as it was
+  unimplemented.
+
 ## v0.3.3 — 2026-07-29
 
 - **Added:** `signing.author-keys` — a directory of pinned author public keys. Every

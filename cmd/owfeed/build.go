@@ -5,12 +5,15 @@ import (
 	"flag"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
 	"owfeed.org/owfeed/internal/apk"
 	"owfeed.org/owfeed/internal/build"
 	"owfeed.org/owfeed/internal/config"
+	"owfeed.org/owfeed/internal/keyring"
+	"owfeed.org/owfeed/internal/keys"
 	"owfeed.org/owfeed/internal/lock"
 )
 
@@ -73,11 +76,31 @@ func (a *app) build(ctx context.Context, args []string) error {
 		}
 	}
 
+	// The keyring package is built like any other, and deliberately so: it is indexed,
+	// signed and published through exactly the same path, so nothing about it is a
+	// special case that could rot separately.
+	//
+	// It carries the feed's CURRENT public key. Its value is not this key — a
+	// subscriber already has that, or they could not have installed anything — but the
+	// next one: a rotation publishes a new keyring version signed by the key routers
+	// still trust, and `apk upgrade` carries the replacement to them. Without it a
+	// rotation reaches only the subscribers who read the announcement, which is a
+	// rotation that does not happen.
+	packages := c.Packages
+	if *c.Signing.KeyringPackage {
+		kp, cleanup, err := a.stageKeyring(c, l)
+		if err != nil {
+			return err
+		}
+		defer cleanup()
+		packages = append(append([]config.Package(nil), packages...), kp)
+	}
+
 	for _, r := range c.Releases {
 		if *onlyLine != "" && r.Line != *onlyLine {
 			continue
 		}
-		for _, p := range c.Packages {
+		for _, p := range packages {
 			if *onlyPkg != "" && p.EffectiveName() != *onlyPkg {
 				continue
 			}
@@ -163,4 +186,58 @@ func sourceDateEpoch() (time.Time, error) {
 		return time.Time{}, err
 	}
 	return time.Unix(secs, 0), nil
+}
+
+// stageKeyring writes the keyring package's payload to a temporary directory and
+// returns the package describing it.
+//
+// Staged rather than committed: the payload is one file derived from the signing key,
+// so keeping a copy in the repository would be a second place for it to be wrong.
+func (a *app) stageKeyring(c *config.Config, l *lock.Lock) (config.Package, func(), error) {
+	key, err := a.signingKey(c)
+	if err != nil {
+		return config.Package{}, func() {}, err
+	}
+	// The version comes from the lockfile, which is where a rotation is recorded and
+	// reviewed. Building without it would mean inventing a number, and a keyring
+	// version invented per run is one that either never moves or moves for no reason.
+	if l.Keyring == nil {
+		return config.Package{}, func() {}, fail(exitConflict,
+			"signing.keyring-package is on but %s records no keyring version; run `owfeed lock --update`",
+			a.lockPath())
+	}
+	id, err := keys.IdentityOf(&key.PublicKey)
+	if err != nil {
+		return config.Package{}, func() {}, wrap(exitKey, err)
+	}
+	// A key that disagrees with the record is a rotation nobody wrote down. Building
+	// anyway would publish the new key under the old version, which every router would
+	// decline to install as an upgrade it already has.
+	if l.Keyring.Identity != id.String() {
+		return config.Package{}, func() {}, fail(exitConflict,
+			"the signing key is %s but %s records %s for the keyring package\n"+
+				"  run `owfeed lock --update` and commit the diff: a rotation is a fact worth seeing",
+			id, a.lockPath(), l.Keyring.Identity)
+	}
+	version := l.Keyring.Version
+	// Beside the config rather than in TMPDIR: `files:` is resolved against the
+	// config's directory, and on macOS the system temp directory is on another volume,
+	// where a relative path to it cannot be formed at all.
+	const stageDir = ".owfeed-keyring"
+	dir := filepath.Join(a.root(), stageDir)
+	if err := os.RemoveAll(dir); err != nil {
+		return config.Package{}, func() {}, wrap(exitBuild, err)
+	}
+	cleanup := func() { os.RemoveAll(dir) }
+
+	if _, err := keyring.Stage(dir, &key.PublicKey); err != nil {
+		cleanup()
+		return config.Package{}, func() {}, wrap(exitBuild, err)
+	}
+	kp, err := keyring.Package(c.Feed, version, stageDir)
+	if err != nil {
+		cleanup()
+		return config.Package{}, func() {}, wrap(exitBuild, err)
+	}
+	return kp, cleanup, nil
 }

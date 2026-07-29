@@ -459,9 +459,6 @@ func (c *Config) notImplemented(path string) error {
 	if c.Build.ChangedOnly {
 		return &Error{Path: path, Msg: "`build.changed-only` is not implemented yet", Hint: "remove it; every configured package is built"}
 	}
-	if c.Signing.KeyringPackage != nil && *c.Signing.KeyringPackage && !keyringDefaulted(c) {
-		return &Error{Path: path, Msg: "`signing.keyring-package` is not implemented yet", Hint: "set it to false for now; the key must be installed manually, as the generated snippet describes"}
-	}
 	return nil
 }
 

@@ -23,13 +23,13 @@ Or a release binary, checked against the attestation GitHub's own workflow produ
 against a checksum from the same release, which whoever replaced the binary could replace too:
 
 ```sh
-gh release download v0.3.3 -R owfeed/owfeed -p 'owfeed-linux-amd64'
+gh release download v0.4.0 -R owfeed/owfeed -p 'owfeed-linux-amd64'
 gh attestation verify owfeed-linux-amd64 -R owfeed/owfeed \
   --signer-workflow owfeed/owfeed/.github/workflows/release.yml
 chmod +x owfeed-linux-amd64 && sudo mv owfeed-linux-amd64 /usr/local/bin/owfeed
 ```
 
-In GitHub Actions, `owfeed/owfeed/setup@v0.3.3` does that verification for you. Builds exist for
+In GitHub Actions, `owfeed/owfeed/setup@v0.4.0` does that verification for you. Builds exist for
 linux and darwin, amd64 and arm64.
 
 **What it needs.** Nothing for `build`, `sign`, `index` or `publish`: the apk toolchain is fetched
@@ -210,9 +210,9 @@ jobs:
       pages: write
       id-token: write
       actions: read
-    uses: owfeed/owfeed/.github/workflows/feed.yml@v0.3.3
+    uses: owfeed/owfeed/.github/workflows/feed.yml@v0.4.0
     with:
-      owfeed-version: v0.3.3
+      owfeed-version: v0.4.0
       smoke-releases: "25.12 24.10"
     secrets:
       sign-key: ${{ secrets.OWFEED_SIGN_KEY }}
@@ -231,8 +231,8 @@ The `environment:` on the publish job is still what gates the run behind a revie
 If you want the steps yourself, take the tool and leave the shape:
 
 ```yaml
-- uses: owfeed/owfeed/setup@v0.3.3
-  with: { version: v0.3.3 }
+- uses: owfeed/owfeed/setup@v0.4.0
+  with: { version: v0.4.0 }
 - run: owfeed --frozen-lock build && owfeed sign && owfeed index
   env:
     OWFEED_SIGN_KEY: ${{ secrets.OWFEED_SIGN_KEY }}
@@ -330,8 +330,8 @@ owfeed refuses each of these. Every one has burned a real maintainer.
 ## Not there yet
 
 Declared in the config schema so that writing them is a clear error rather than a silent
-no-op, but **not implemented**: `signing.keyring-package`, `retention:`, `overrides:`,
-`build.changed-only`, `version-from: git-describe`, and the `s3` and `rsync` publish targets.
+no-op, but **not implemented**: `retention:`, `overrides:`, `build.changed-only`,
+`version-from: git-describe`, and the `s3` and `rsync` publish targets.
 `github-pages` is the only target that works.
 
 Also absent: SBOM, key rotation commands, and reusing an already-published package instead of

@@ -44,7 +44,7 @@
 
 <p class="kicker">Reference</p>
 <h1>Commands and config</h1>
-<p class="lead">Look-up page. Current for owlab v0.5.1 and owfeed v0.3.3. The authoritative
+<p class="lead">Look-up page. Current for owlab v0.5.1 and owfeed v0.4.0. The authoritative
 config reference is <a href="/schema/v1.json">schema/v1.json</a>, which is generated from the
 code and is what your editor reads.</p>
 
@@ -175,6 +175,8 @@ signing:
   usign-key: env:OWFEED_USIGN_KEY   # usign, signs opkg indexes
   sign-packages: true         # false: sign only the index, not other people's files
   author-keys: ./keys         # every package must be signed by a key pinned here
+  keyring-package: true       # ships <feed>-keyring, which carries the key to routers
+  also-sign: []               # during a rotation: the old key, so both signatures ride
 
 publish:
   - target: github-pages

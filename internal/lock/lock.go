@@ -28,6 +28,27 @@ type Lock struct {
 	Version   int       `yaml:"version"`
 	Releases  []Release `yaml:"releases"`
 	Toolchain Toolchain `yaml:"toolchain"`
+	Keyring   *Keyring  `yaml:"keyring,omitempty"`
+}
+
+// Keyring records which signing key the published keyring package carries, and at
+// which version.
+//
+// It is here rather than derived on the spot because the version has to satisfy two
+// things at once: change when the key changes, and never go backwards. A version
+// computed from the key alone manages the first and fails the second — key identities
+// are hashes, so the next one is as likely to sort below the current as above, and a
+// keyring that goes backwards is a rotation that no router installs.
+//
+// Recorded, so a rotation shows up as a diff somebody approves rather than as a
+// number that moved on its own. `owfeed lock --update` writes it; `--frozen-lock`
+// makes a key that disagrees with it a hard failure, which is what turns "the signing
+// key changed under CI" from a silent republish into a stopped build.
+type Keyring struct {
+	// Identity is the signing key the recorded version belongs to.
+	Identity string `yaml:"identity"`
+	// Version is the keyring package's version, e.g. "1.2-r1".
+	Version string `yaml:"version"`
 }
 
 // Release records what was derived for one release line.
