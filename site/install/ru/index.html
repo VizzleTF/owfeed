@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Поставить пакет из фида — owfeed</title>
+<meta name="description" content="Как добавить подписанный фид пакетов OpenWrt на роутер и ставить из него. Команды для apk (25.12 и новее) и opkg (24.10 и старее).">
+<link rel="canonical" href="https://owfeed.org/install/ru/">
+<link rel="alternate" hreflang="en" href="https://owfeed.org/install/">
+<link rel="alternate" hreflang="ru" href="https://owfeed.org/install/ru/">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<div class="shell">
+
+<aside class="side">
+<a class="brand" href="/ru/"><b>owfeed</b>.org</a>
+<p class="tagline">Подписанные фиды пакетов для OpenWrt, на обеих линиях релизов.</p>
+<nav>
+<h3>Начало</h3>
+<ul>
+  <li><a href="/ru/">Обзор</a></li>
+  <li><a href="/install/ru/" class="here">Поставить пакет</a></li>
+</ul>
+<h3>Публикация</h3>
+<ul>
+  <li><a href="/cookbook/ru/">Выпустить пакет</a></li>
+  <li><a href="/reference/ru/">Команды и конфиг</a></li>
+  <li><a href="/problems/ru/">Если сломалось</a></li>
+</ul>
+<h3>Исходники</h3>
+<ul class="source">
+  <li><a href="https://github.com/owfeed/owlab">owlab</a></li>
+  <li><a href="https://github.com/owfeed/owfeed">owfeed</a></li>
+  <li><a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a></li>
+</ul>
+<p class="lang"><a href="/install/">EN</a> · <span class="here">RU</span></p>
+</nav>
+</aside>
+
+<main class="page">
+
+<p class="kicker">Для владельцев роутеров</p>
+<h1>Поставить пакет из фида</h1>
+<p class="lead">Три шага: доверить ключ фида, добавить репозиторий, поставить пакет по имени.
+Команды разные для разных линий: на 25.12 и новее это apk, на 24.10 и старее opkg. Свою версию
+смотрите в <code>cat /etc/openwrt_release</code>.</p>
+
+<div class="note"><strong>Прочитайте до того, как что-то вставлять.</strong> Установка ключа
+фида говорит роутеру доверять ему для <em>любого</em> имени пакета, а не только для нужного вам.
+Фид с утёкшим ключом может предложить версию <code>dropbear</code> повыше и выиграть. Отзыва
+ключей в apk нет. Ставьте ключ потому, что доверяете тому, кто держит фид, а не потому, что так
+написано на странице.</div>
+
+<h2>OpenWrt 25.12 и новее (apk)</h2>
+
+<pre># Без этих двух пакетов стоковый образ не умеет ходить по HTTPS.
+apk add ca-bundle libustream-mbedtls
+
+# 1. Доверить ключ
+wget https://repo.owfeed.org/owfeed-packages.pem \
+  -O /etc/apk/keys/owfeed-packages.pem
+
+# 2. Добавить репозиторий — это URL самого файла индекса
+echo "https://repo.owfeed.org/releases/25.12/$(cat /etc/apk/arch)/packages.adb" \
+  > /etc/apk/repositories.d/owfeed-packages.list
+
+# 3. Сохранить оба файла при обновлении прошивки
+printf '%s\n' /etc/apk/keys/owfeed-packages.pem \
+  /etc/apk/repositories.d/owfeed-packages.list >> /etc/sysupgrade.conf
+
+apk update &amp;&amp; apk add podkop-updater</pre>
+
+<p>Третий шаг обязателен. Сами по себе эти файлы sysupgrade не переживают, а пропавший ключ —
+самая частая причина <code>UNTRUSTED signature</code> после обновления прошивки.</p>
+
+<h2>OpenWrt 24.10 и старее (opkg)</h2>
+
+<pre># 1. Доверить ключ. ИМЯ ФАЙЛА обязано быть id ключа — opkg ищет его именно по имени.
+wget https://repo.owfeed.org/9040356b214084da \
+  -O /etc/opkg/keys/9040356b214084da
+
+# 2. Добавить репозиторий — здесь это URL КАТАЛОГА
+echo "src/gz owfeed-packages https://repo.owfeed.org/releases/24.10/$(. /etc/openwrt_release; echo $DISTRIB_ARCH)" \
+  >> /etc/opkg/customfeeds.conf
+
+opkg update &amp;&amp; opkg install podkop-updater</pre>
+
+<h2>Три вещи, на которых спотыкаются</h2>
+
+<table>
+<tr><th>Не делайте так</th><th>Почему</th></tr>
+<tr><td><code>apk add ./package.apk</code></td><td>Установка файла напрямую пишет в <code>/etc/apk/world</code> пин на хеш содержимого. Этот файл переживает sysupgrade, и пакет больше никогда не обновится из фида. Добавьте репозиторий и ставьте по имени.</td></tr>
+<tr><td>Рассчитывать, что Attended Sysupgrade перенесёт пакеты</td><td><code>owut</code> не передаёт сторонние репозитории, а <code>repository_allow_list</code> на сервере пуст по умолчанию, что запрещает всё. После обновления фид придётся добавить заново.</td></tr>
+<tr><td>Использовать URL фида с редиректом</td><td>apk не ходит по 30x (<a href="https://github.com/openwrt/openwrt/issues/17180">openwrt#17180</a>). Если фид переехал, пишите новый URL напрямую.</td></tr>
+</table>
+
+<h2>Что означает подпись, а что нет</h2>
+
+<p>Фид подписывает свой индекс, и доверие идёт именно оттуда: apk проверяет индекс по ключу,
+который вы поставили, а потом сверяет каждый пакет с хешем, записанным в индексе.</p>
+
+<p>Это говорит: <em>фид ручается за эти байты</em>. Это не говорит, кто написал сам софт.
+Аккуратный фид проверяет подпись автора по заранее зафиксированному ключу и только потом
+добавляет свою — <a href="https://github.com/owfeed/owfeed-packages/blob/main/CONTRIBUTING_ru.md">owfeed-packages
+описывает, что именно он проверяет</a>. Прочитайте такую страницу у любого фида, прежде чем ему
+довериться.</p>
+
+<p>Блоки подписей в apk складываются, поэтому пакет может нести и подпись автора, и подпись
+фида. Поставьте ещё и публичный ключ автора, и сможете проверить его напрямую.</p>
+
+<h2>Как отключить фид</h2>
+
+<pre># apk
+rm /etc/apk/repositories.d/owfeed-packages.list
+rm /etc/apk/keys/owfeed-packages.pem
+apk update
+
+# opkg — уберите строку src/gz, затем
+rm /etc/opkg/keys/9040356b214084da
+opkg update</pre>
+
+<p>Уже установленные пакеты останутся. Обновления к ним приходить перестанут.</p>
+
+<footer>
+<p>В примерах используется фид
+<a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a>. У других фидов свой
+ключ и свой URL, а форма команд та же.</p>
+</footer>
+
+</main>
+</div>
+</body>
+</html>

@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Commands and config — owfeed</title>
+<meta name="description" content="Every owlab and owfeed command, the fields of owlab.yaml and owfeed.yml, environment variables, exit codes, and a glossary of OpenWrt packaging terms.">
+<link rel="canonical" href="https://owfeed.org/reference/">
+<link rel="alternate" hreflang="en" href="https://owfeed.org/reference/">
+<link rel="alternate" hreflang="ru" href="https://owfeed.org/reference/ru/">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<div class="shell">
+
+<aside class="side">
+<a class="brand" href="/"><b>owfeed</b>.org</a>
+<p class="tagline">Signed package feeds for OpenWrt, on both release lines.</p>
+<nav>
+<h3>Start</h3>
+<ul>
+  <li><a href="/">Overview</a></li>
+  <li><a href="/install/">Install a package</a></li>
+</ul>
+<h3>Publish</h3>
+<ul>
+  <li><a href="/cookbook/">Ship your package</a></li>
+  <li><a href="/reference/" class="here">Commands and config</a></li>
+  <li><a href="/problems/">When something breaks</a></li>
+</ul>
+<h3>Source</h3>
+<ul class="source">
+  <li><a href="https://github.com/owfeed/owlab">owlab</a></li>
+  <li><a href="https://github.com/owfeed/owfeed">owfeed</a></li>
+  <li><a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a></li>
+</ul>
+<p class="lang"><span class="here">EN</span> · <a href="/reference/ru/">RU</a></p>
+</nav>
+</aside>
+
+<main class="page">
+
+<p class="kicker">Reference</p>
+<h1>Commands and config</h1>
+<p class="lead">Look-up page. Current for owlab v0.5.1 and owfeed v0.2.1. The authoritative
+config reference is <a href="/schema/v1.json">schema/v1.json</a>, which is generated from the
+code and is what your editor reads.</p>
+
+<h2>owlab — develop and test</h2>
+
+<table>
+<tr><th>Command</th><th>Does</th></tr>
+<tr><td><code>owlab up</code></td><td>Build and start the routers. <code>--rebuild</code> throws the old ones away.</td></tr>
+<tr><td><code>owlab down</code></td><td>Stop them. <code>--purge</code> also deletes images and VM disks.</td></tr>
+<tr><td><code>owlab sync</code></td><td>Copy your sources into the running routers and reload LuCI. <code>--watch</code> does it on every save.</td></tr>
+<tr><td><code>owlab build</code></td><td>Build a real <code>.apk</code>/<code>.ipk</code> with the OpenWrt SDK into <code>dist/&lt;arch&gt;/</code>.</td></tr>
+<tr><td><code>owlab test</code></td><td>Start, install, assert, tear down, exit 0 or 1. What CI runs.</td></tr>
+<tr><td><code>owlab install</code></td><td>Install packages on a running router, by file or by name.</td></tr>
+<tr><td><code>owlab shell</code> / <code>exec</code></td><td>Open a shell, or run one command.</td></tr>
+<tr><td><code>owlab logs</code></td><td>Boot and service log. <code>-f</code> follows.</td></tr>
+<tr><td><code>owlab open</code></td><td>Open LuCI in a browser.</td></tr>
+<tr><td><code>owlab status</code></td><td>What is running and on which ports.</td></tr>
+<tr><td><code>owlab releases</code></td><td>Compare your pinned releases against the download servers.</td></tr>
+<tr><td><code>owlab doctor</code></td><td>Check this machine: ports, ssh keys, line endings, QEMU, DNS.</td></tr>
+</table>
+
+<p>Every command takes router ids; with none, it acts on all of them. <code>--config</code>
+(or <code>-c</code>) works anywhere in the line. <code>test</code>, <code>status</code> and
+<code>releases</code> take <code>--json</code>.</p>
+
+<h3>owlab test assertions</h3>
+
+<pre>owlab test --release 25.12.5 \
+  --install 'dist/*/my-app-*' \
+  --assert 'http 200 /cgi-bin/luci/admin/services/mine' \
+  --assert 'service mined' \
+  --assert 'uci mine.@mine[0].enabled' \
+  --assert 'package my-app'</pre>
+
+<p><code>--feed URL</code> with <code>--feed-key FILE</code> installs by name out of a signed
+index instead of from a file. <code>--keep</code> leaves the routers up; <code>--json</code>
+writes a report to stdout.</p>
+
+<h2>owfeed — sign, index, publish</h2>
+
+<table>
+<tr><th>Command</th><th>Does</th></tr>
+<tr><td><code>owfeed init</code></td><td>Scaffold <code>owfeed.yml</code> in this directory.</td></tr>
+<tr><td><code>owfeed keygen</code></td><td>Create the feed's signing key. <code>--usign</code> makes a release-manifest key instead.</td></tr>
+<tr><td><code>owfeed lock</code></td><td>Derive the architecture matrix into <code>owfeed.lock</code>. <code>--update</code> prints the diff.</td></tr>
+<tr><td><code>owfeed build</code></td><td>Package every configured package into <code>dist/&lt;arch&gt;/</code>. Does not compile.</td></tr>
+<tr><td><code>owfeed sign</code></td><td>Add a signature inside each package.</td></tr>
+<tr><td><code>owfeed index</code></td><td>Fan the packages out per architecture and write a signed index in each.</td></tr>
+<tr><td><code>owfeed doctor</code></td><td>Check the built tree. <code>--require-origin</code> demands every package name its source repository.</td></tr>
+<tr><td><code>owfeed smoke</code></td><td>Install the built feed on a real OpenWrt image. <code>--release 24.10</code> for the older line.</td></tr>
+<tr><td><code>owfeed verify</code></td><td>Check the published feed from outside, over its documented URL.</td></tr>
+<tr><td><code>owfeed publish</code></td><td>Gate the tree on those checks and hand it to the target. No override flag.</td></tr>
+<tr><td><code>owfeed release</code></td><td>Sign the built packages and write a signed manifest for a feed to consume.</td></tr>
+<tr><td><code>owfeed verify-artifact</code></td><td>Check someone else's release against their signature.</td></tr>
+<tr><td><code>owfeed install-snippet</code></td><td>Print the instructions your subscribers follow. <code>--format sh</code> for commands only.</td></tr>
+<tr><td><code>owfeed releases</code></td><td>What the download server publishes per line, and which format it takes.</td></tr>
+</table>
+
+<p>Global flags: <code>-C DIR</code>, <code>--config PATH</code>, <code>--cache DIR</code>,
+<code>--frozen-lock</code>, <code>--no-network</code>, <code>-v</code>.</p>
+
+<p>The usual order is <code>build → sign → index → doctor</code>. Each stage takes a directory
+in and leaves a directory behind. Signing appends bytes, so indexing before signing produces an
+index that no longer matches the files.</p>
+
+<h2>owlab.yaml</h2>
+
+<pre>version: 1
+
+project:                      # optional — only if sync needs telling
+  install:                    # source path → path on the router
+    my-package/htdocs: /www
+  build: ./build-css.sh       # run before every sync
+  post_sync: |                # run on the router after every sync
+    uci -q commit luci
+  theme: footstrap            # select this theme after each sync
+
+defaults:                     # merged into every router below
+  packages: ["+luci-app-sqm", "-ppp"]
+  fixtures: [all]             # invent networks, clients, leases
+  extra_packages:             # install from a URL, not a feed
+    - name: luci-app-podkop
+      apk: https://…/luci-app-podkop-0.7.21-r1.apk
+      ipk: https://…/luci-app-podkop-v0.7.21-r1-all.ipk
+
+routers:
+  - id: owrt2512
+    release: "25.12.5"        # pin exact point releases
+    distro: openwrt           # or immortalwrt
+    fidelity: vm              # basic (container) or vm (QEMU, real kernel)
+    ports: { http: 8080, ssh: 2222 }
+    memory: 512M
+    radios: 2                 # vm only — mac80211_hwsim</pre>
+
+<p>Unknown keys are an error by design, so a typo fails at load time instead of being ignored.</p>
+
+<h2>owfeed.yml</h2>
+
+<pre>version: 1
+
+feed:
+  name: my-feed               # seeds every derived filename
+  url: https://feed.example.org
+  maintainer: "You &lt;you@example.org&gt;"
+
+releases:
+  - line: "25.12"
+    default: true             # the line the install snippet advertises
+    format: apk
+    arches: auto              # derived from downloads.openwrt.org
+  - line: "24.10"
+    format: ipk
+
+signing:
+  key: env:OWFEED_SIGN_KEY    # EC prime256v1, signs apk indexes and packages
+  usign-key: env:OWFEED_USIGN_KEY   # usign, signs opkg indexes
+  sign-packages: true
+
+publish:
+  - target: github-pages
+
+packages:
+  - name: luci-app-mine
+    build: mkpkg              # package a staged directory; owfeed does not compile
+    arch: noarch              # never "all" — apk rejects it
+    version: 1.0.0-r1         # or version-from: makefile:./Makefile
+    files: ./staging/luci-app-mine
+    conffiles: ["/etc/config/mine"]
+    depends: ["luci-base"]
+    i18n: { from: ./po }      # compiles .po into the .lmo LuCI reads
+    releases: ["25.12"]       # omit to publish to every line</pre>
+
+<p>Full field list with descriptions: <a href="/schema/v1.json">schema/v1.json</a>. Add this
+line at the top of your config and your editor will complete and validate it:</p>
+
+<pre># yaml-language-server: $schema=https://owfeed.org/schema/v1.json</pre>
+
+<h2>Environment variables</h2>
+
+<table>
+<tr><th>Variable</th><th>Used by</th><th>For</th></tr>
+<tr><td><code>OWFEED_SIGN_KEY</code></td><td>owfeed</td><td>The EC key that signs apk indexes and packages.</td></tr>
+<tr><td><code>OWFEED_USIGN_KEY</code></td><td>owfeed</td><td>The usign key that signs opkg indexes.</td></tr>
+<tr><td><code>OWFEED_RELEASE_KEY</code></td><td>owfeed</td><td>The usign key that signs a release manifest.</td></tr>
+<tr><td><code>OWFEED_RELEASE_DATE</code></td><td>owfeed</td><td>Override the manifest timestamp for a reproducible build.</td></tr>
+<tr><td><code>OWLAB_CONFIG</code></td><td>owlab</td><td>Where <code>owlab.yaml</code> lives.</td></tr>
+<tr><td><code>OWLAB_PUBKEY</code></td><td>owlab</td><td>Which public key to install on routers. Default: every <code>~/.ssh/id_*.pub</code>.</td></tr>
+<tr><td><code>OWLAB_ROOT_PASSWORD</code></td><td>owlab</td><td>Set a root password. Default is none.</td></tr>
+</table>
+
+<h2>owfeed exit codes</h2>
+
+<p>CI can retry an outage. It must never retry a failed check, which is why 7 and 8 are
+different codes.</p>
+
+<table>
+<tr><th>Code</th><th>Meaning</th></tr>
+<tr><td>0</td><td>Success</td></tr>
+<tr><td>2</td><td>Config error</td></tr>
+<tr><td>3</td><td>Build failed</td></tr>
+<tr><td>4</td><td>Key problem</td></tr>
+<tr><td>5</td><td>Index failed</td></tr>
+<tr><td>6</td><td>Publish failed</td></tr>
+<tr><td>7</td><td>A check failed — do not retry</td></tr>
+<tr><td>8</td><td>Upstream unreachable — safe to retry</td></tr>
+<tr><td>9</td><td><code>owfeed.lock</code> disagrees with upstream</td></tr>
+</table>
+
+<h2>Glossary</h2>
+
+<dl class="glossary">
+<dt>apk</dt>
+<dd>OpenWrt's package manager from 25.12. Reads one binary index per architecture and verifies
+it against a key in <code>/etc/apk/keys</code>.</dd>
+
+<dt>opkg</dt>
+<dd>The package manager on 24.10 and earlier. Reads a text index and verifies it with usign.
+It does not understand any of apk's formats.</dd>
+
+<dt>feed</dt>
+<dd>A directory of packages and signed indexes, served over HTTPS. No server software, no
+database — anything that serves static files will do.</dd>
+
+<dt>index</dt>
+<dd>The file listing every package in a feed with its version and hash. <code>packages.adb</code>
+for apk, <code>Packages</code> plus <code>Packages.gz</code> for opkg. Trust lives here: the
+index is signed, and each package is checked against the hash the index recorded.</dd>
+
+<dt>noarch / all</dt>
+<dd>Two words for a package that runs on any architecture. apk requires <code>noarch</code> and
+rejects <code>all</code> as uninstallable; opkg has only ever known <code>all</code>. One build
+therefore writes both <code>dist/noarch/</code> and <code>dist/all/</code>.</dd>
+
+<dt>usign</dt>
+<dd>The ed25519 signing scheme OpenWrt already ships, so a router can verify a signature with
+nothing installed. Used for opkg indexes and release manifests. Keys are looked up by id, which
+is why the key file's <em>name</em> matters for opkg.</dd>
+
+<dt>conffiles</dt>
+<dd>The list of configuration files a package owns. Anything under <code>/etc/config/</code> that
+is not declared gets replaced by your defaults on every firmware upgrade, silently.</dd>
+
+<dt>.lmo</dt>
+<dd>The compiled translation format LuCI reads. Shipping <code>.po</code> files does nothing —
+point <code>i18n.from:</code> at them and they are compiled during the build.</dd>
+
+<dt>sysupgrade</dt>
+<dd>A firmware upgrade that keeps a listed set of files. <code>/etc/apk/keys/*.pem</code> and
+your repository list are not in that set by default — add them to
+<code>/etc/sysupgrade.conf</code>.</dd>
+
+<dt>dist/&lt;arch&gt;/</dt>
+<dd>The <a href="https://github.com/owfeed/owfeed/blob/main/docs/artifact-contract.md">artifact
+contract</a>: one directory per architecture, named the way downloads.openwrt.org spells it. The
+architecture is the directory, never the filename.</dd>
+
+<dt>-r&lt;n&gt;</dt>
+<dd>The package revision, always last in a version. After <code>~</code> apk reads a commit hash,
+so only hex digits are allowed there — write <code>1.0_beta1</code>, not <code>1.0~beta</code>.</dd>
+</dl>
+
+<footer>
+<p>Longer reference, per tool:
+<a href="https://github.com/owfeed/owlab/blob/main/docs/reference.md">owlab docs/reference.md</a> ·
+<a href="https://github.com/owfeed/owfeed/blob/main/docs/manifest-format.md">manifest format</a> ·
+<a href="https://github.com/owfeed/owfeed/blob/main/docs/apk-behaviour.md">verified apk and opkg behaviour</a></p>
+</footer>
+
+</main>
+</div>
+</body>
+</html>
