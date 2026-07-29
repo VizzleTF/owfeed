@@ -12,9 +12,22 @@ name: Pages
 # different site with a different workflow, and the two must not learn to share a
 # job that has a secret in it.
 
+# Pull requests build the site and run the checks over it, but never deploy.
+# A gate that only runs after the merge is not a gate: the first person to see
+# a broken link would be a reader, and the fix would need a second deploy.
 on:
   push:
     branches: [main]
+    paths:
+      - 'site/**'
+      - 'schema/**'
+      - 'docs/**'
+      - 'README.md'
+      - 'README_ru.md'
+      - '.github/workflows/pages.yml'
+  # The same list again: GitHub Actions does not expand YAML anchors, so the two
+  # have to be kept in step by hand.
+  pull_request:
     paths:
       - 'site/**'
       - 'schema/**'
@@ -29,9 +42,12 @@ permissions:
 
 # One deploy at a time, and never cancel one in flight: a half-uploaded site is
 # a schema URL that answers 404 for everyone whose editor asks during the gap.
+#
+# A pull request gets its own group so a rebuild can cancel the previous one --
+# nothing is being served from it, so there is nothing to leave half-written.
 concurrency:
-  group: pages-${{ github.repository }}
-  cancel-in-progress: false
+  group: pages-${{ github.repository }}-${{ github.event.pull_request.number || 'main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -112,7 +128,11 @@ jobs:
           [ "$broken" -eq 0 ] || exit 1
           echo "$(wc -l < /tmp/links) internal links, all resolve"
 
-      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+      # Only what is about to be served needs uploading. A pull request has
+      # already had the checks run over it by this point, which is all it is here
+      # for.
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           # .nojekyll is a dotfile, and from v4 this action drops those unless
           # told not to. Without it Pages runs Jekyll and removes /assets/.
@@ -120,6 +140,7 @@ jobs:
           path: _site
 
   deploy:
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     permissions:
