@@ -1,6 +1,9 @@
 package snippet_test
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -88,5 +91,91 @@ func TestTrailingSlashIsNotDoubled(t *testing.T) {
 	in.Config.Feed.URL = "https://feed.example.org/"
 	if got := snippet.Shell(in); strings.Contains(got, "org//") {
 		t.Errorf("snippet contains a doubled slash:\n%s", got)
+	}
+}
+
+// bothLines is a feed serving apk and opkg, which is what the subscribe script
+// exists for: one file that works whichever of the two the router runs.
+func bothLines() snippet.Input {
+	in := input()
+	in.Config.Releases = []config.Release{
+		{Line: "25.12", Default: true, Format: config.FormatAPK},
+		{Line: "24.10", Format: config.FormatIPK},
+	}
+	in.UsignKeyID = "deadbeefdeadbeef"
+	return in
+}
+
+func TestScriptCoversBothManagers(t *testing.T) {
+	got := snippet.Script(bothLines())
+
+	want := []string{
+		// The whole point: the router is asked, rather than the reader.
+		"if command -v apk >/dev/null 2>&1; then",
+		// Both lines' URLs are built from $line, so a feed adding a release line
+		// cannot leave the script advertising only the old one.
+		"https://feed.example.org/releases/$line/$arch/packages.adb",
+		"src/gz demofeed https://feed.example.org/releases/$line/$arch",
+		// opkg finds a key by filename, and the filename is the id.
+		"/etc/opkg/keys/deadbeefdeadbeef",
+		"/etc/apk/keys/demofeed.pem",
+		// Both managers lose their key across sysupgrade without this.
+		"/lib/upgrade/keep.d/demofeed",
+		// Re-running must not append a second feed line.
+		"sed -i \"/^src\\\\/gz demofeed /d\" /etc/opkg/customfeeds.conf",
+	}
+	for _, w := range want {
+		if !strings.Contains(got, w) {
+			t.Errorf("script does not contain %q:\n%s", w, got)
+		}
+	}
+}
+
+// A release line the feed does not publish for has to stop the script. Guessing
+// produces a URL that 404s at `apk update`, which reads as a broken feed and
+// sends the report to the wrong person.
+func TestScriptNamesTheLinesItServes(t *testing.T) {
+	got := snippet.Script(bothLines())
+
+	for _, w := range []string{
+		`case " 25.12 " in *" $line "*) ;; *) unsupported "25.12" apk ;; esac`,
+		`case " 24.10 " in *" $line "*) ;; *) unsupported "24.10" opkg ;; esac`,
+	} {
+		if !strings.Contains(got, w) {
+			t.Errorf("script does not contain %q:\n%s", w, got)
+		}
+	}
+}
+
+// An apk-only feed has no opkg branch to offer, and saying so beats fetching a
+// key file that was never published.
+func TestScriptRefusesOpkgWhenNoIPKLine(t *testing.T) {
+	got := snippet.Script(input())
+
+	if strings.Contains(got, "opkg update") {
+		t.Errorf("apk-only feed emitted an opkg branch:\n%s", got)
+	}
+	if !strings.Contains(got, "publishes nothing for opkg") {
+		t.Errorf("apk-only feed does not say why opkg is unsupported:\n%s", got)
+	}
+}
+
+// The script is the one output of this package that is executed rather than
+// read, and a syntax error in it reaches routers as a copy-paste that does
+// nothing. `sh -n` parses without running.
+func TestScriptParses(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no sh on this machine")
+	}
+	for name, in := range map[string]snippet.Input{"both": bothLines(), "apk-only": input()} {
+		path := filepath.Join(t.TempDir(), "subscribe.sh")
+		if err := os.WriteFile(path, []byte(snippet.Script(in)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		out, err := exec.Command(sh, "-n", path).CombinedOutput()
+		if err != nil {
+			t.Errorf("%s: sh -n: %v\n%s\n%s", name, err, out, snippet.Script(in))
+		}
 	}
 }

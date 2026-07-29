@@ -20,6 +20,7 @@ import (
 	"owfeed.org/owfeed/internal/keyring"
 	"owfeed.org/owfeed/internal/keys"
 	"owfeed.org/owfeed/internal/lock"
+	"owfeed.org/owfeed/internal/snippet"
 )
 
 const defaultOut = "out"
@@ -88,7 +89,10 @@ func (a *app) index(ctx context.Context, args []string) error {
 		}
 		// The ipk side already wrote its key and its trees; its badges are still ours
 		// to write, because this is the only place both formats have been seen.
-		return a.writeBadges(*out, badges)
+		if err := a.writeBadges(*out, badges); err != nil {
+			return err
+		}
+		return a.writeSubscribe(c, *out)
 	}
 
 	tool, err := a.tool(ctx, l)
@@ -272,6 +276,9 @@ func (a *app) index(ctx context.Context, args []string) error {
 	if err := a.writeBadges(*out, badges); err != nil {
 		return err
 	}
+	if err := a.writeSubscribe(c, *out); err != nil {
+		return err
+	}
 	// GitHub Pages runs Jekyll unless told not to, and Jekyll drops paths beginning
 	// with an underscore or a dot. On a tree of binaries that silently removes files.
 	if err := os.WriteFile(filepath.Join(*out, ".nojekyll"), nil, 0o644); err != nil {
@@ -299,6 +306,38 @@ func (a *app) index(ctx context.Context, args []string) error {
 			len(names), strings.Join(names, ", "))
 	}
 	a.logf("wrote %s, signed by key %s", *out, signer.Identity)
+	return nil
+}
+
+// writeSubscribe publishes the one script that subscribes a router to this feed,
+// whichever release line it runs.
+//
+// It is written from the same config that laid the tree out, at the same moment,
+// so a URL it prints cannot describe a layout the feed does not have. A script
+// maintained by hand beside the deploy is the drift this package exists to
+// prevent — see the package comment for a feed currently living with it.
+func (a *app) writeSubscribe(c *config.Config, out string) error {
+	in := snippet.Input{Config: c}
+
+	// The opkg branch needs the key's id, because for opkg the id IS the filename.
+	// Without a usign key there are no ipk lines to serve, and the script says so
+	// rather than fetching a name that does not exist.
+	for _, r := range c.Releases {
+		if r.Format != config.FormatIPK {
+			continue
+		}
+		key, err := a.usignKey(c)
+		if err != nil {
+			return err
+		}
+		in.UsignKeyID = key.ID.String()
+		break
+	}
+
+	path := filepath.Join(out, snippet.ScriptName)
+	if err := os.WriteFile(path, []byte(snippet.Script(in)), 0o755); err != nil {
+		return wrap(exitIndex, err)
+	}
 	return nil
 }
 
