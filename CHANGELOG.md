@@ -2,6 +2,17 @@
 
 Dates are when the tag was cut. Anything not listed is documentation or tests.
 
+## v0.2.1 — 2026-07-29
+
+- **Fixed:** `owfeed version` said `dev` when the tool was installed the way the
+  README tells people to install it. `go install owfeed.org/owfeed/cmd/owfeed@latest`
+  stamps nothing, so the most common installation reported no version at all and
+  every bug report from it would have arrived without one. The module system had
+  already recorded what it resolved; the binary now reads that back. A stamped
+  release build still wins, and a pseudo-version is still refused -- `0.0.0-2026...`
+  looks like a release number and is not one. owlab has answered this correctly
+  since v0.2.0; this brings the two into line.
+
 ## v0.2.0 — 2026-07-29
 
 - **owfeed lives at `github.com/owfeed/owfeed`, and its module path is

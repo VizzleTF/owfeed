@@ -10,6 +10,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
+	"strings"
 	"syscall"
 
 	"owfeed.org/owfeed/internal/config"
@@ -32,7 +34,33 @@ const (
 )
 
 // version is stamped at build time with -ldflags "-X main.version=...".
-var version = "dev"
+var version = ""
+
+// resolveVersion is what this binary calls itself.
+//
+// The release build passes a tag. `go install owfeed.org/owfeed/cmd/owfeed@latest`
+// passes nothing, and that is the documented way to install this tool -- so
+// without the fallback below the most common installation reports "dev" and every
+// bug report arrives without a version in it. The module system already recorded
+// what it resolved; this reads it back.
+//
+// A pseudo-version is not a version: `0.0.0-20260729...` looks like a release
+// number and is not one, and `+dirty` means the tree had uncommitted changes.
+// Both are refused, because "dev" is the honest answer for a local build.
+func resolveVersion() string {
+	if version != "" {
+		return version
+	}
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "dev"
+	}
+	v := strings.TrimPrefix(info.Main.Version, "v")
+	if v == "" || v == "(devel)" || strings.HasPrefix(v, "0.0.0-") || strings.HasSuffix(v, "+dirty") {
+		return "dev"
+	}
+	return v
+}
 
 type app struct {
 	configPath string
@@ -101,7 +129,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	var err error
 	switch cmd {
 	case "version":
-		fmt.Fprintf(stdout, "owfeed %s\n", version)
+		fmt.Fprintf(stdout, "owfeed %s\n", resolveVersion())
 		return exitOK
 	case "keygen":
 		err = a.keygen(cmdArgs)
