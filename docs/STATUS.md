@@ -33,6 +33,7 @@ feed, or released binaries — not by reading the code.
 | `feed.yml` in `dry-run` mode | owfeed-packages ran it end to end: build with no key, throwaway keys, sign, index, check-tree, doctor, smoke on both lines, a tree digest, publish job skipped |
 | `feed.yml` publishing | owfeed-packages publishes through it now. Signed with the `feed` environment's own keys, gated, deployed, and the live feed still serves three packages on both lines |
 | A called job's `environment:` resolves against the **caller** | Probed: an environment variable set to a different value in each repository returned the caller's, and the caller's environment-scoped signing secrets reached the called job at their real lengths |
+| The report contract, consumed | luci-theme-footstrap installs the published theme BY NAME out of the signed index and asserts its pages render — the whole path, from a source tree to a router, checked by CI rather than by hand |
 
 ## Built but not yet exercised in anger
 
@@ -53,14 +54,14 @@ new repository secret, which is the maintainer's call. Until then the claim in
 `CONTRIBUTING.md` that author signatures are additive — that a package carries both
 its author's and the feed's — is true of the design and demonstrated by nothing.
 
-**A consumer job in a feed's PR pipeline.** `owfeed smoke` proves the channel
-works; nothing yet proves that what came through it functions. The obstacle used
-to be the address — a router in a container has to reach an HTTP server on the
-runner, and no literal is right on a CI runner, under Docker Desktop and in a VM
-at once. owlab now takes `{host}` in a `--feed` URL and substitutes the answer per
-tier, so the obstacle is gone and what remains is sequencing: it needs an owlab
-release carrying that, and then the job belongs in the feed's own repository
-rather than here.
+**A consumer job inside `feed.yml` itself.** The claim is now proved, but from the
+package side: luci-theme-footstrap installs the published theme by name and
+asserts its pages render. What that does not cover is a feed's own pull request —
+the tree being built there is not published yet, so proving it works means serving
+`out/` over HTTP from the runner and pointing owlab at it. `{host}` in a `--feed`
+URL exists for exactly that. Whether it belongs here as a `consumer-test:` input
+or in each feed's own workflow is a question about a public interface, and there
+is one consumer of it so far. Contracts belong to whoever has more than one.
 
 ## Known contradictions
 
