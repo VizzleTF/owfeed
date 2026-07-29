@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Выпустить пакет — кукбук owfeed</title>
-<meta name="description" content="Собрать пакет LuCI, проверить на живом роутере, подписать и попасть в фид, откуда его поставят через apk add. Готовые файлы для GitHub Actions и GitLab CI.">
+<meta name="description" content="Путь от пакета LuCI на вашей машине до apk upgrade на чужом роутере: разработка и проверка, сборка и релиз, попадание в фид.">
 <link rel="canonical" href="https://owfeed.org/cookbook/ru/">
 <link rel="alternate" hreflang="en" href="https://owfeed.org/cookbook/">
 <link rel="alternate" hreflang="ru" href="https://owfeed.org/cookbook/ru/">
@@ -26,6 +26,9 @@
 <h3>Публикация</h3>
 <ul>
   <li><a href="/cookbook/ru/" class="here">Выпустить пакет</a></li>
+  <li class="sub"><a href="/cookbook/develop/ru/">Разработка и проверка</a></li>
+  <li class="sub"><a href="/cookbook/release/ru/">Сборка и релиз</a></li>
+  <li class="sub"><a href="/cookbook/feed/ru/">Попасть в фид</a></li>
   <li><a href="/reference/ru/">Команды и конфиг</a></li>
   <li><a href="/problems/ru/">Если сломалось</a></li>
 </ul>
@@ -34,7 +37,7 @@
   <li><a href="https://github.com/owfeed/owlab">owlab</a></li>
   <li><a href="https://github.com/owfeed/owfeed">owfeed</a></li>
   <li><a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a></li>
-  <li><a href="/legal/ru/">Право и приватность</a></li>
+  <li><a href="/legal/ru/">Правовое и приватность</a></li>
 </ul>
 <p class="lang"><a href="/cookbook/">EN</a> · <span class="here">RU</span></p>
 </nav>
@@ -44,234 +47,68 @@
 
 <p class="kicker">Кукбук</p>
 <h1>Выпустить пакет</h1>
-<p class="lead">Для тех, кто написал приложение LuCI или тему и хочет, чтобы её ставили. Пять
-шагов: проверить у себя, завести CI, подписать релиз, попасть в фид и закрыть старую линию
-релизов. Копируйте файлы и меняйте имена.</p>
+<p class="lead">Для тех, кто написал приложение или тему LuCI и хочет, чтобы её ставили. Три этапа,
+каждый отдельной страницей, каждый полезен и без следующего.</p>
 
-<h2>1. Проверить на живом роутере</h2>
+<div class="forks">
+  <a class="fork" href="/cookbook/develop/ru/">
+    <h4>1 · Разработка и проверка</h4>
+    <p>Одноразовые роутеры в Docker. Синхронизация по сохранению, проверка одной командой.</p>
+  </a>
+  <a class="fork" href="/cookbook/release/ru/">
+    <h4>2 · Сборка и релиз</h4>
+    <p>Обе линии релизов, подпись своим ключом, всё в CI.</p>
+  </a>
+  <a class="fork" href="/cookbook/feed/ru/">
+    <h4>3 · Попасть в фид</h4>
+    <p>Чтобы у людей был <code>apk upgrade</code>, а не ссылка на скачивание.</p>
+  </a>
+</div>
 
-<p>Нужен Docker. Больше ничего.</p>
+<h2>Весь путь, восемь команд</h2>
 
-<pre>go install owfeed.org/owlab/cmd/owlab@latest
+<pre># 1 — пока пишете
+owlab up
+owlab sync --watch
+owlab test --release 25.12.5 --release 24.10.8 --install 'dist/*/my-app-*'
 
-cd my-luci-app
-owlab build --release 25.12.5    # настоящая сборка в SDK, пишет в dist/&lt;arch&gt;/
-owlab up                         # поднять роутер
-owlab install owrt2512 dist/*/*.apk
-owlab open owrt2512              # LuCI в браузере</pre>
+# 2 — когда ставите тег
+owlab build --release 25.12.5
+owlab build --release 24.10.8
+owfeed sign --key env:OWFEED_AUTHOR_KEY
+owfeed release
 
-<p>Пока идёт работа, пересборку можно пропускать. <code>sync</code> копирует исходники в живой
-роутер и перезагружает LuCI:</p>
+# 3 — один раз, чтобы попасть в фид
+#     заведите issue с репозиторием, тегом и публичными ключами</pre>
 
-<pre>owlab sync --watch</pre>
+<h2>Где можно остановиться</h2>
 
-<p>Вся проверка одной командой — она же крутится в CI:</p>
+<p><strong>После 1</strong> — если релиза ещё нет. owlab не хранит ключей и ничего не публикует; он
+нужен, чтобы ответить на вопрос «а на 24.10 это вообще работает».</p>
 
-<pre>owlab test --release 25.12.5 --release 24.10.8 \
-  --install 'dist/*/luci-app-mine-*' \
-  --assert 'http 200 /cgi-bin/luci/admin/services/mine'</pre>
+<p><strong>После 2</strong> — если пакет ставят изредка и те, кто умеет вставить команду.
+Подписанный релиз не требует от людей ничего, кроме проверки подписи, и не делает чей-то ключ
+корнем доверия на их роутере.</p>
 
-<p>Команда поднимает роутеры, ставит пакет, проверяет утверждения, всё гасит и выходит с кодом
-0 или 1. Две вещи, которых не сделает <code>curl</code> руками: она сначала логинится в LuCI,
-потому что иначе любая страница <code>admin</code> отвечает редиректом на форму входа, и она
-роняет тест на ответе 200, в теле которого страница ошибки — диспетчер LuCI отдаёт 200 вместе с
-трейсбеком.</p>
+<p><strong>Идите к 3</strong>, когда нужен работающий <code>apk upgrade</code>. Это единственное,
+что фид даёт сверх релиза, — а <a href="/ru/">обзор</a> объясняет, почему не стоит поднимать фид
+там, где хватит релиза.</p>
 
-<div class="note"><strong>Проверяйте обе линии релизов.</strong> На 25.12 пакетный менеджер apk,
-на 24.10 opkg, и совпадают они почти ни в чём. Пакет, который работает на одной, может упасть
-на другой.</div>
-
-<h3>Минимальный owlab.yaml</h3>
-
-<p>Необязателен, флаги выше работают и без него. Пригодится, когда нужен один и тот же набор
-роутеров каждый раз:</p>
-
-<pre>version: 1
-routers:
-  - id: owrt2512
-    release: "25.12.5"
-  - id: owrt2410
-    release: "24.10.8"</pre>
-
-<p>Указывайте точные номера релизов. Образы и фиды <code>snapshot</code> пересобираются каждый
-день и независимо друг от друга, поэтому установки начинают падать в течение суток.</p>
-
-<h2>2. Завести CI</h2>
-
-<p class="kicker">.github/workflows/ci.yml</p>
-<pre>name: ci
-on: [push, pull_request]
-permissions: { contents: read }
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix: { release: ["25.12.5", "24.10.8"] }
-    steps:
-      - uses: actions/checkout@v5
-      - uses: owfeed/owlab/setup@v0.5.1
-      - run: owlab build --release ${{ matrix.release }}
-      - uses: owfeed/owlab/action@v0.5.1
-        with:
-          releases: ${{ matrix.release }}
-          install: dist/*/my-app-*
-          assert: |
-            package my-app
-            http 200 /cgi-bin/luci/admin/services/mine</pre>
-
-<p>Ключей в этом job нет вообще, поэтому его безопасно гонять на pull request из форка.</p>
-
-<h3>GitLab CI</h3>
-
-<p>Те же команды, другой файл. Оба инструмента — один статический бинарь:</p>
-
-<pre>build:
-  image: docker:27
-  services: [docker:27-dind]
-  variables: { DOCKER_HOST: tcp://docker:2375, DOCKER_TLS_CERTDIR: "" }
-  script:
-    - wget -qO- https://github.com/owfeed/owlab/releases/download/v0.5.1/owlab_0.5.1_linux_amd64.tar.gz | tar xz
-    - export PATH="$PWD:$PATH"
-    - owlab build --release 25.12.5
-    - owlab test --release 25.12.5 --install 'dist/*/my-app-*'
-  artifacts:
-    paths: [dist/]</pre>
-
-<h2>3. Подписать релиз</h2>
-
-<p>Ключ делается один раз, у вас на машине. Приватная половина уходит в секреты репозитория:</p>
-
-<pre>owfeed keygen --usign -o release.key
-# пишет release.key (приватный, 0600) и release.pub (публичный), печатает id ключа
-
-gh secret set OWFEED_RELEASE_KEY &lt; release.key
-git add release.pub &amp;&amp; git commit -m "publish the public half"</pre>
-
-<div class="note"><strong>Коммитьте публичную половину и никогда приватную.</strong> По
-<code>release.pub</code> кто угодно, включая фид, проверяет, что релиз действительно ваш.
-<code>release.key</code> в репозиторий попадать не должен: опубликованный ключ подписи отозвать
-нельзя. Запишите id ключа, который напечатал <code>keygen</code> — его спросит фид.</div>
-
-<p class="kicker">.github/workflows/release.yml</p>
-<pre>name: release
-on:
-  push: { tags: ["v*"] }
-permissions: { contents: read }
-jobs:
-  release:
-    runs-on: ubuntu-latest
-    permissions: { contents: write }
-    steps:
-      - uses: actions/checkout@v5
-      - uses: owfeed/owlab/setup@v0.5.1
-      - uses: owfeed/owfeed/setup@v0.4.1
-
-      - run: owlab build --release 25.12.5
-      - run: owlab build --release 24.10.8
-
-      - name: Подписать пакеты и написать манифест
-        env: { OWFEED_RELEASE_KEY: ${{ secrets.OWFEED_RELEASE_KEY }} }
-        run: owfeed release
-
-      - run: gh release create "${{ github.ref_name }}" --generate-notes
-             dist/*/*.apk dist/*/*.ipk dist/manifest.txt*
-        env: { GH_TOKEN: ${{ github.token }} }</pre>
-
-<p><code>owfeed release</code> сам берёт репозиторий и тег из <code>GITHUB_REPOSITORY</code> и
-<code>GITHUB_REF_NAME</code> на GitHub, а на GitLab — из <code>CI_PROJECT_PATH</code> и
-<code>CI_COMMIT_TAG</code>. Флаги <code>--repo</code> и <code>--tag</code> нужны, только если
-хотите их переопределить.</p>
-
-<h3>Зачем нужен манифест</h3>
-
-<p><code>owfeed release</code> пишет <code>manifest.txt</code>: каждый файл релиза, его размер и
-хеш, плюс репозиторий и тег, которым он принадлежит. Всё это подписано вашим ключом usign.</p>
-
-<p>Репозиторий и тег записаны там потому, что подпись доказывает, кто написал документ, но
-никогда — о чём он. Без этих строк манифест, взятый из другого вашего релиза, отлично прошёл бы
-проверку как этот.</p>
-
-<h2>4. Попасть в фид</h2>
-
-<p>Сейчас пакет уже можно поставить из релиза. Чтобы у пользователей заработал
-<code>apk upgrade</code>, попросите фид взять его к себе. Например,
-<a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a>.</p>
-
-<ol class="steps">
-<li><strong>Выпустите релиз с подписанным манифестом.</strong> Это шаг 3. Фид проверяет манифест
-до того, как что-либо тронет.</li>
-<li><strong>Откройте issue</strong> по шаблону <em>Request package publication</em>: репозиторий,
-тег, ваш публичный ключ и его id.</li>
-<li><strong>Бот проверит за минуту</strong> — что релиз существует, что манифест сходится с
-ключом, который вы называете своим, и что формат читаемый. Если что-то не так, он скажет
-что.</li>
-<li><strong>Ключ смотрит человек.</strong> Единственный ручной шаг, и обойти его нельзя:
-добавление ключа и есть всё решение о доверии.</li>
-<li><strong>Дальше автоматика.</strong> Каждый новый тег подхватывается в течение часа.</li>
-</ol>
-
-<h3>Показать это в своём README</h3>
-
-<p>Когда фид взял ваш пакет, он публикует для него два бейджа, и они обновляются вместе с фидом.
-Бейджи рисуются по только что собранному индексу, поэтому не могут показать версию, которой фид
-не раздаёт:</p>
-
-<pre>[![owfeed](https://img.shields.io/endpoint?url=https://repo.owfeed.org/badge/my-app.json)](https://owfeed.org/install/ru/)
-[![owfeed](https://img.shields.io/endpoint?url=https://repo.owfeed.org/badge/my-app-releases.json)](https://owfeed.org/install/ru/)</pre>
-
-<p>Первый показывает версию, которую раздаёт фид; второй — линии релизов, на которых он её
-раздаёт.</p>
-
-<div class="note"><strong>Есть манифест — обновления приезжают без человека.</strong> Если вместо
-него просто файлы, каждое обновление ждёт человека: подпись на файлах не говорит, какие файлы
-входят в релиз.</div>
-
-<h3>Проверить, что ставится из фида, а не только из файла</h3>
-
-<p>Установка файла доказывает, что работает пакет. Установка <strong>по имени</strong> из
-подписанного индекса доказывает, что работает канал: индекс читается, URL не редиректит, ключ
-на роутере совпадает с тем, которым подписано:</p>
-
-<pre>owlab test --release 25.12.5 \
-  --feed 'https://repo.owfeed.org/releases/25.12/x86_64/packages.adb' \
-  --feed-key ./owfeed-packages.pem \
-  --install my-app \
-  --assert 'http 200 /cgi-bin/luci/admin/services/mine'</pre>
-
-<p>Здесь ничего не ставится с <code>--allow-untrusted</code>. Пакет принимается именно потому,
-что подписан индекс.</p>
-
-<h2>5. Уже есть пакет на 24.10? Добавьте 25.12</h2>
-
-<p>Портировать ничего не нужно. Тот же Makefile выдаёт apk:</p>
-
-<pre>owlab build --release 25.12.5
-owlab test  --release 25.12.5 --install 'dist/*/my-app-*'</pre>
-
-<p>Собралось и страница открывается — публикуйте обе линии из одного релизного job, как в
-шаге 3. Обычно стоит посмотреть на две вещи:</p>
+<h2>Что нужно на каждом этапе</h2>
 
 <table>
-<tr><th>Что</th><th>Почему</th></tr>
-<tr><td><code>conffiles</code></td><td>Каждый <code>/etc/config/*</code>, который везёт пакет, обязан быть объявлен. Иначе sysupgrade молча заменит настройки пользователя вашими значениями по умолчанию, и так на каждом обновлении прошивки.</td></tr>
-<tr><td><code>arch: all</code></td><td>apk считает <code>all</code> неустановимым. Пишите <code>LUCI_PKGARCH:=all</code> и дайте сборке перевести это — так делает и собственная упаковка OpenWrt.</td></tr>
+<tr><th>Этап</th><th>Требует</th></tr>
+<tr><td>Разработка и проверка</td><td>Docker. Больше ничего.</td></tr>
+<tr><td>Сборка и релиз</td><td>Два ключа, сделанных один раз. Тулчейн ставить не нужно: инструменты apk скачиваются из SDK OpenWrt и проверяются по зафиксированному ключу.</td></tr>
+<tr><td>Попасть в фид</td><td>Подписанный релиз и фид, готовый его взять.</td></tr>
 </table>
 
-<p>Если пакет — тема, приложение, скрипт или статический бинарь, SDK не нужен вовсе.
-<code>owfeed build</code> упакует уже разложенный каталог за секунды вместо того, чтобы качать
-тулчейн.</p>
-
-<h2>Что делают пользователи</h2>
-
-<p>Когда пакет в фиде, вся инструкция — три команды. Положите её в свой README или дайте ссылку
-на <a href="/install/ru/">страницу установки</a>: там обе линии релизов и ошибки, из-за которых
-люди теряют обновления.</p>
-
 <footer>
-<p>Живой пример целиком:
-<a href="https://github.com/VizzleTF/luci-theme-footstrap">luci-theme-footstrap</a>. ·
-Застряли? <a href="/problems/ru/">Если сломалось</a>.</p>
-<p><a href="/legal/ru/">Отказ от гарантий и приватность</a></p>
+<p>Справочник: <a href="/reference/ru/">все команды и поля конфига</a> ·
+<a href="/problems/ru/">если сломалось</a></p>
+<p>Разобранный пример целиком:
+<a href="https://github.com/VizzleTF/luci-theme-footstrap">luci-theme-footstrap</a>.</p>
+<p><a href="/legal/ru/">Оговорка и приватность</a></p>
 </footer>
 
 </main>

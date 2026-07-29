@@ -2,6 +2,30 @@
 
 Dates are when the tag was cut. Anything not listed is documentation or tests.
 
+## v0.4.2 — 2026-07-29
+
+- **Added:** `owfeed index` writes `subscribe.sh` at the feed root — one script that
+  subscribes a router to the feed on either release line. Until now a person had to know
+  whether their release used apk or opkg before they could paste anything, and the two
+  sets of commands share nothing: the repository line names an index file on one and a
+  directory on the other, the key is matched by identity on one and by filename on the
+  other, and the signature schemes differ.
+
+  The script asks the router instead of the reader. It is generated from the same config
+  that laid the tree out, so it cannot document a URL the feed does not serve — the drift
+  this package exists to prevent. Re-running it replaces the feed's line rather than
+  appending a second one, and a release line the feed does not publish for stops it with
+  a message naming the lines that do exist, instead of guessing a URL that would 404 at
+  `apk update` and read as a broken feed.
+
+  Verified on 25.12.5 and 24.10.8: subscribe, install by name from the feed, run twice
+  with no duplication, and a router reporting 23.05.5 refused with exit 1.
+
+- **Fixed:** the opkg snippet omitted the `keep.d` step. `customfeeds.conf` is a conffile
+  and survives sysupgrade; the key file under `/etc/opkg/keys/` is shipped by no package
+  and does not. Losing only the key leaves a feed configured and unverifiable, which
+  reads as the feed being broken.
+
 ## v0.4.1 — 2026-07-29
 
 - **Fixed:** the keyring package was never produced by the feeds that need it most. It

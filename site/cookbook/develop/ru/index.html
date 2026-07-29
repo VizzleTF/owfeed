@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Разработка и проверка — кукбук owfeed</title>
+<meta name="description" content="Одноразовые роутеры OpenWrt в Docker: owlab up, синхронизация по сохранению и одна команда, которая поднимает, ставит, проверяет и убирает за собой.">
+<link rel="canonical" href="https://owfeed.org/cookbook/develop/ru/">
+<link rel="alternate" hreflang="en" href="https://owfeed.org/cookbook/develop/">
+<link rel="alternate" hreflang="ru" href="https://owfeed.org/cookbook/develop/ru/">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<div class="shell">
+
+<aside class="side">
+<a class="brand" href="/ru/"><b>owfeed</b>.org</a>
+<p class="tagline">Подписанные фиды пакетов для OpenWrt, на обеих линиях релизов.</p>
+<nav>
+<h3>Начало</h3>
+<ul>
+  <li><a href="/ru/">Обзор</a></li>
+  <li><a href="/install/ru/">Поставить пакет</a></li>
+</ul>
+<h3>Публикация</h3>
+<ul>
+  <li><a href="/cookbook/ru/">Выпустить пакет</a></li>
+  <li class="sub"><a href="/cookbook/develop/ru/" class="here">Разработка и проверка</a></li>
+  <li class="sub"><a href="/cookbook/release/ru/">Сборка и релиз</a></li>
+  <li class="sub"><a href="/cookbook/feed/ru/">Попасть в фид</a></li>
+  <li><a href="/reference/ru/">Команды и конфиг</a></li>
+  <li><a href="/problems/ru/">Если сломалось</a></li>
+</ul>
+<h3>Исходники</h3>
+<ul class="source">
+  <li><a href="https://github.com/owfeed/owlab">owlab</a></li>
+  <li><a href="https://github.com/owfeed/owfeed">owfeed</a></li>
+  <li><a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a></li>
+  <li><a href="/legal/ru/">Правовое и приватность</a></li>
+</ul>
+<p class="lang"><a href="/cookbook/develop/">EN</a> · <span class="here">RU</span></p>
+</nav>
+</aside>
+
+<main class="page">
+
+<p class="kicker">Кукбук · 1 из 3</p>
+<h1>Разработка и проверка</h1>
+<p class="lead">Одноразовые роутеры OpenWrt в Docker, чтобы увидеть свой пакет в работе раньше всех
+остальных. Нужен Docker и больше ничего.</p>
+
+<h2>Поднять роутер</h2>
+
+<pre>go install owfeed.org/owlab/cmd/owlab@latest
+
+cd my-luci-app
+owlab up                  # запустить
+owlab open owrt2512       # открыть LuCI в браузере</pre>
+
+<p>Логин <code>root</code>, пароль пустой. Роутер одноразовый: сломали — <code>owlab up
+--rebuild</code>.</p>
+
+<h2>Видеть правки без пересборки</h2>
+
+<pre>owlab sync --watch</pre>
+
+<p>Копирует исходники в запущенный роутер на каждое сохранение и перезагружает LuCI. В этом цикле
+проходит день; сборка пакета — потом.</p>
+
+<p>owlab копирует те же каталоги, что ставит <code>luci.mk</code>: <code>htdocs</code>,
+<code>ucode</code>, <code>luasrc</code>, <code>root</code>. Если пакет лежит в подкаталоге, скажите
+об этом:</p>
+
+<pre>project:
+  install:
+    my-package/htdocs: /www
+    my-package/ucode:  /usr/share/ucode/luci
+    my-package/root:   /</pre>
+
+<h2>Держать обе линии релизов</h2>
+
+<pre>version: 1
+routers:
+  - id: owrt2512
+    release: "25.12.5"
+  - id: owrt2410
+    release: "24.10.8"</pre>
+
+<p>25.12 работает на apk, 24.10 на opkg, и общего у них почти нет. Пакет, который работает на одной
+линии, на другой может не собраться или не встать, так что открытыми стоит держать обе.</p>
+
+<div class="note"><strong>Фиксируйте точные патч-версии.</strong> Образы <code>snapshot</code> и
+фиды <code>snapshot</code> пересобираются каждый день и независимо друг от друга, поэтому установка
+начинает падать в течение суток. <code>owlab releases</code> покажет, какой пин отстал.</div>
+
+<h2>Сделать роутер обжитым</h2>
+
+<p>Пустой роутер почти ничего не рисует: ни зон, ни VLAN, ни аренд DHCP, ни таблиц со строками.
+Разрабатывать страницу против такого неудобно:</p>
+
+<pre>defaults:
+  fixtures: [all]</pre>
+
+<p>По отдельности: <code>networks</code>, <code>clients</code>, <code>wireguard</code>,
+<code>portforwards</code>, <code>system</code>, <code>wifi</code>.</p>
+
+<h2>Вся проверка одной командой</h2>
+
+<pre>owlab test --release 25.12.5 --release 24.10.8 \
+  --install 'dist/*/luci-app-mine-*' \
+  --assert 'http 200 /cgi-bin/luci/admin/services/mine' \
+  --assert 'service mined'</pre>
+
+<p>Поднимает роутеры, ставит, проверяет, гасит, выходит с 0 или 1. Это же гоняет CI, и прогнать
+локально — способ узнать раньше, чем узнает пул-реквест.</p>
+
+<p>Две вещи, которых не делает написанный руками <code>curl</code>. Он <strong>сначала логинится в
+LuCI</strong>, потому что иначе любая админская страница отвечает редиректом — из-за этого
+очевидная проверка рапортует 403 на совершенно живой странице. И он <strong>считает провалом 200,
+в теле которого страница ошибки</strong>: диспетчер LuCI ловит исключение и отдаёт 200 с трейсбеком
+внутри.</p>
+
+<p>Полный список видов проверок: <a href="/reference/ru/">Команды и конфиг</a>.</p>
+
+<h2>Когда в деле модуль ядра</h2>
+
+<pre>routers:
+  - id: real
+    fidelity: vm
+    release: "25.12.5"
+    packages: ["+kmod-nft-nat"]</pre>
+
+<p>Контейнер использует ядро хоста, поэтому пакеты <code>kmod-*</code> ставятся и ничего не делают.
+<code>fidelity: vm</code> — это QEMU с родным ядром OpenWrt: первый старт около полутора минут,
+дальше секунд двадцать. Заодно появляются симулированные радиомодули, так что страницы Wi-Fi
+показывают роутер, а не конфиг-файл.</p>
+
+<footer>
+<p>Дальше: <a href="/cookbook/release/ru/">Сборка и релиз</a> — превратить работающее в
+подписанные артефакты.</p>
+<p><a href="/legal/ru/">Оговорка и приватность</a></p>
+</footer>
+
+</main>
+</div>
+</body>
+</html>

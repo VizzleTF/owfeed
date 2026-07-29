@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Сборка и релиз — кукбук owfeed</title>
+<meta name="description" content="Собрать пакет OpenWrt для обеих линий релизов, подписать своим ключом и выпустить релиз, который фид сможет проверить. GitHub Actions и GitLab CI, копипастой.">
+<link rel="canonical" href="https://owfeed.org/cookbook/release/ru/">
+<link rel="alternate" hreflang="en" href="https://owfeed.org/cookbook/release/">
+<link rel="alternate" hreflang="ru" href="https://owfeed.org/cookbook/release/ru/">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<div class="shell">
+
+<aside class="side">
+<a class="brand" href="/ru/"><b>owfeed</b>.org</a>
+<p class="tagline">Подписанные фиды пакетов для OpenWrt, на обеих линиях релизов.</p>
+<nav>
+<h3>Начало</h3>
+<ul>
+  <li><a href="/ru/">Обзор</a></li>
+  <li><a href="/install/ru/">Поставить пакет</a></li>
+</ul>
+<h3>Публикация</h3>
+<ul>
+  <li><a href="/cookbook/ru/">Выпустить пакет</a></li>
+  <li class="sub"><a href="/cookbook/develop/ru/">Разработка и проверка</a></li>
+  <li class="sub"><a href="/cookbook/release/ru/" class="here">Сборка и релиз</a></li>
+  <li class="sub"><a href="/cookbook/feed/ru/">Попасть в фид</a></li>
+  <li><a href="/reference/ru/">Команды и конфиг</a></li>
+  <li><a href="/problems/ru/">Если сломалось</a></li>
+</ul>
+<h3>Исходники</h3>
+<ul class="source">
+  <li><a href="https://github.com/owfeed/owlab">owlab</a></li>
+  <li><a href="https://github.com/owfeed/owfeed">owfeed</a></li>
+  <li><a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a></li>
+  <li><a href="/legal/ru/">Правовое и приватность</a></li>
+</ul>
+<p class="lang"><a href="/cookbook/release/">EN</a> · <span class="here">RU</span></p>
+</nav>
+</aside>
+
+<main class="page">
+
+<p class="kicker">Кукбук · 2 из 3</p>
+<h1>Сборка и релиз</h1>
+<p class="lead">Превратить работающий пакет в подписанные артефакты, которые любой может проверить.
+Ключей тут два, и работу они делают разную — это стоит прочитать до того, как копировать
+workflow.</p>
+
+<h2>Сделать два ключа, один раз</h2>
+
+<pre>owfeed keygen -o author.pem            # EC prime256v1 — подписывает пакеты
+owfeed keygen --usign -o release.key   # usign/ed25519 — подписывает манифест релиза
+
+gh secret set OWFEED_AUTHOR_KEY &lt; author.pem
+gh secret set OWFEED_RELEASE_KEY &lt; release.key
+
+git add author.pub.pem release.pub &amp;&amp; git commit -m "publish the public halves"</pre>
+
+<div class="note"><strong>Коммитьте публичные половины, приватные — никогда.</strong> Утёкший
+подписывающий ключ не отозвать: у apk нет ни CRL, ни срока жизни, ни способа сказать, что ключ
+мёртв. Генерируйте вне рабочего дерева git — <code>owfeed keygen</code> откажется писать внутрь
+него без <code>--force</code>. Запишите id ключей, которые он печатает: фид их спросит.</div>
+
+<h3>Почему два</h3>
+
+<table>
+<tr><th>Ключ</th><th>Подписывает</th><th>Кто проверяет</th></tr>
+<tr><td>EC (<code>author.pem</code>)</td><td>внутри каждого <code>.apk</code></td><td>кто угодно и когда угодно, по вашей публичной половине</td></tr>
+<tr><td>usign (<code>release.key</code>)</td><td>манифест релиза</td><td>фид, один раз, когда забирает релиз</td></tr>
+</table>
+
+<p>Подпись usign проверяется при приёмке — и на этом всё, за пределы CI фида она не выходит.
+Подпись EC едет <em>внутри пакета</em> до самого роутера, поэтому тот, кто фиду не доверяет, всё
+равно может убедиться: собрали это вы. Это единственное утверждение о пакете, которое переживает
+раздачу через фид, — потому фиды её и требуют.</p>
+
+<h2>Собрать обе линии релизов</h2>
+
+<pre>owlab build --release 25.12.5    # apk, для 25.12 и новее
+owlab build --release 24.10.8    # ipk, для 24.10 и старее</pre>
+
+<p>Обе попадают в <code>dist/&lt;arch&gt;/</code>. Пакет, не зависящий от архитектуры, даёт два
+каталога — и это правильно, а не баг: apk требует <code>noarch</code> и отвергает <code>all</code>,
+opkg про <code>noarch</code> никогда не слышал.</p>
+
+<pre>dist/
+├── noarch/my-app-1.0.0-r1.apk
+└── all/my-app_1.0.0-r1_all.ipk</pre>
+
+<p>Выпуская только под 25.12, вы бросаете всех, кто не обновился, — а на релизе роутеры сидят
+годами.</p>
+
+<div class="note"><strong>Соберите пакет перед релизом, даже если sync работал.</strong>
+<code>luci.mk</code> минифицирует JS и CSS, <code>owlab sync</code> — нет. Код, который работает
+неминифицированным и ломается после минификации, не виден, пока кто-нибудь не соберёт пакет.</div>
+
+<h2>Сначала подпись, потом манифест — именно в таком порядке</h2>
+
+<pre>owfeed sign --key env:OWFEED_AUTHOR_KEY
+owfeed release --repo "$GITHUB_REPOSITORY" --tag "$GITHUB_REF_NAME"</pre>
+
+<p><strong>Порядок здесь не вкусовщина.</strong> <code>owfeed release</code> записывает размер и
+sha256 каждого пакета, а подпись дописывает байты в файл. Поменяете местами — манифест будет
+описывать файлы, которых больше нет.</p>
+
+<p><code>owfeed release</code> пишет <code>manifest.txt</code>: что входит в этот релиз, размер и
+хеш каждого файла, из какого репозитория и тега он приехал — и подписывает всё это вашим ключом
+usign. Репозиторий там не для красоты: <strong>подпись доказывает, кто это написал, но никогда — о
+чём это</strong>. Без той строки манифест, взятый из другого вашего релиза, прекрасно прошёл бы
+проверку как этот.</p>
+
+<h2>GitHub Actions</h2>
+
+<p class="kicker">.github/workflows/release.yml</p>
+<pre>name: release
+on:
+  push: { tags: ["v*"] }
+permissions: { contents: read }
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: owfeed/owlab/setup@v0.5.1
+      - uses: owfeed/owfeed/setup@v0.4.2
+
+      - run: owlab build --release 25.12.5
+      - run: owlab build --release 24.10.8
+
+      - name: Sign the packages, then write the manifest
+        env:
+          OWFEED_AUTHOR_KEY:  ${{ secrets.OWFEED_AUTHOR_KEY }}
+          OWFEED_RELEASE_KEY: ${{ secrets.OWFEED_RELEASE_KEY }}
+        run: |
+          owfeed sign --key env:OWFEED_AUTHOR_KEY
+          owfeed release
+
+      - run: gh release create "${{ github.ref_name }}" --generate-notes
+             dist/*/*.apk dist/*/*.ipk dist/manifest.txt*
+        env: { GH_TOKEN: ${{ github.token }} }</pre>
+
+<p><code>owfeed release</code> сам читает репозиторий и тег из <code>GITHUB_REPOSITORY</code> и
+<code>GITHUB_REF_NAME</code> на GitHub и из <code>CI_PROJECT_PATH</code> и
+<code>CI_COMMIT_TAG</code> на GitLab, так что флаги нужны только чтобы их перебить.</p>
+
+<div class="note"><strong>Держите шаги с подписью в джобе, до которой не дотянется
+пул-реквест.</strong> PR из форка запускает вашу сборку, и секрет, доступный оттуда, — это
+опубликованный секрет. Ограничьте джобу тегом, как выше, или вынесите её отдельно с
+<code>environment:</code>.</div>
+
+<h2>GitLab CI</h2>
+
+<pre>release:
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    - wget -qO- https://github.com/owfeed/owlab/releases/download/v0.5.1/owlab_0.5.1_linux_amd64.tar.gz | tar xz
+    - wget -qO owfeed https://github.com/owfeed/owfeed/releases/latest/download/owfeed-linux-amd64
+    - chmod +x owfeed &amp;&amp; export PATH="$PWD:$PATH"
+    - owlab build --release 25.12.5
+    - owlab build --release 24.10.8
+    - owfeed sign --key env:OWFEED_AUTHOR_KEY
+    - owfeed release</pre>
+
+<h2>Проверить раньше, чем это сделают другие</h2>
+
+<pre>owfeed doctor --require-origin</pre>
+
+<p>Нумерованные находки, каждая говорит, чем это грозит и что делать. Те, что ловят большинство
+первых попыток:</p>
+
+<table>
+<tr><th>Находка</th><th>Что это значит</th></tr>
+<tr><td><code>arch: all</code></td><td>apk считает такой пакет неустанавливаемым. Пишите <code>LUCI_PKGARCH:=all</code> и дайте сборке перевести это самой — так делает и собственная упаковка OpenWrt.</td></tr>
+<tr><td>OWF207</td><td>Файл <code>/etc/config/*</code> кладётся, но не объявлен в <code>conffiles:</code>, поэтому sysupgrade молча заменит настройки пользователя вашими дефолтами при каждом обновлении прошивки.</td></tr>
+<tr><td>Версия отклонена</td><td>После <code>~</code> apk ждёт хеш коммита, то есть только hex. Пишите <code>1.0_beta1</code>, а не <code>1.0~beta</code>.</td></tr>
+<tr><td>Переводы не видны</td><td>LuCI читает скомпилированные <code>.lmo</code> и игнорирует <code>.po</code>. Укажите каталоги в <code>i18n.from:</code>.</td></tr>
+</table>
+
+<footer>
+<p>Дальше: <a href="/cookbook/feed/ru/">Попасть в фид</a> — чтобы у людей работал
+<code>apk upgrade</code>, а не ссылка на скачивание.</p>
+<p><a href="/legal/ru/">Оговорка и приватность</a></p>
+</footer>
+
+</main>
+</div>
+</body>
+</html>

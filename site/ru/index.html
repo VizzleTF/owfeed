@@ -26,6 +26,9 @@
 <h3>Публикация</h3>
 <ul>
   <li><a href="/cookbook/ru/">Выпустить пакет</a></li>
+  <li class="sub"><a href="/cookbook/develop/ru/">Разработка и проверка</a></li>
+  <li class="sub"><a href="/cookbook/release/ru/">Сборка и релиз</a></li>
+  <li class="sub"><a href="/cookbook/feed/ru/">Попасть в фид</a></li>
   <li><a href="/reference/ru/">Команды и конфиг</a></li>
   <li><a href="/problems/ru/">Если сломалось</a></li>
 </ul>
@@ -51,7 +54,7 @@
 <div class="forks">
   <a class="fork" href="/install/ru/">
     <h4>Владелец роутера</h4>
-    <p>Хотите поставить пакет из фида. Это три команды.</p>
+    <p>Хотите поставить пакет из фида. Одна команда.</p>
   </a>
   <a class="fork" href="/cookbook/ru/">
     <h4>Автор пакета</h4>
@@ -82,12 +85,12 @@ go install owfeed.org/owfeed/cmd/owfeed@latest</pre>
 
 <p>Или скачайте готовый бинарь и сверьте его с аттестацией, которую выпустил сам GitHub:</p>
 
-<pre>gh release download v0.4.1 -R owfeed/owfeed -p 'owfeed-linux-amd64'
+<pre>gh release download v0.4.2 -R owfeed/owfeed -p 'owfeed-linux-amd64'
 gh attestation verify owfeed-linux-amd64 -R owfeed/owfeed \
   --signer-workflow owfeed/owfeed/.github/workflows/release.yml
 chmod +x owfeed-linux-amd64 &amp;&amp; sudo mv owfeed-linux-amd64 /usr/local/bin/owfeed</pre>
 
-<p>В GitHub Actions эту проверку делают за вас <code>owfeed/owfeed/setup@v0.4.1</code> и
+<p>В GitHub Actions эту проверку делают за вас <code>owfeed/owfeed/setup@v0.4.2</code> и
 <code>owfeed/owlab/setup@v0.5.1</code>.</p>
 
 <h3>Что понадобится</h3>

@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Build and release — owfeed cookbook</title>
+<meta name="description" content="Build your OpenWrt package for both release lines, sign it with your own key, and publish a release a feed can verify. GitHub Actions and GitLab CI, copy-paste.">
+<link rel="canonical" href="https://owfeed.org/cookbook/release/">
+<link rel="alternate" hreflang="en" href="https://owfeed.org/cookbook/release/">
+<link rel="alternate" hreflang="ru" href="https://owfeed.org/cookbook/release/ru/">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<div class="shell">
+
+<aside class="side">
+<a class="brand" href="/"><b>owfeed</b>.org</a>
+<p class="tagline">Signed package feeds for OpenWrt, on both release lines.</p>
+<nav>
+<h3>Start</h3>
+<ul>
+  <li><a href="/">Overview</a></li>
+  <li><a href="/install/">Install a package</a></li>
+</ul>
+<h3>Publish</h3>
+<ul>
+  <li><a href="/cookbook/">Ship your package</a></li>
+  <li class="sub"><a href="/cookbook/develop/">Develop and test</a></li>
+  <li class="sub"><a href="/cookbook/release/" class="here">Build and release</a></li>
+  <li class="sub"><a href="/cookbook/feed/">Get into a feed</a></li>
+  <li><a href="/reference/">Commands and config</a></li>
+  <li><a href="/problems/">When something breaks</a></li>
+</ul>
+<h3>Source</h3>
+<ul class="source">
+  <li><a href="https://github.com/owfeed/owlab">owlab</a></li>
+  <li><a href="https://github.com/owfeed/owfeed">owfeed</a></li>
+  <li><a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a></li>
+  <li><a href="/legal/">Legal and privacy</a></li>
+</ul>
+<p class="lang"><span class="here">EN</span> · <a href="/cookbook/release/ru/">RU</a></p>
+</nav>
+</aside>
+
+<main class="page">
+
+<p class="kicker">Cookbook · 2 of 3</p>
+<h1>Build and release</h1>
+<p class="lead">Turn a working package into signed artifacts anyone can verify. Two keys are
+involved and they do different jobs — that is the part worth reading before you copy the
+workflow.</p>
+
+<h2>Make the two keys, once</h2>
+
+<pre>owfeed keygen -o author.pem       # EC prime256v1 — signs the packages
+owfeed keygen --usign -o release.key   # usign/ed25519 — signs the release manifest
+
+gh secret set OWFEED_AUTHOR_KEY &lt; author.pem
+gh secret set OWFEED_RELEASE_KEY &lt; release.key
+
+git add author.pub.pem release.pub &amp;&amp; git commit -m "publish the public halves"</pre>
+
+<div class="note"><strong>Commit the public halves; never the private ones.</strong> A published
+signing key cannot be revoked — apk has no CRL, no expiry, no way to say a key is dead. Generate
+them outside a git working tree; <code>owfeed keygen</code> refuses to write inside one without
+<code>--force</code>. Note the key ids it prints: a feed will ask for them.</div>
+
+<h3>Why two</h3>
+
+<table>
+<tr><th>Key</th><th>Signs</th><th>Checked by</th></tr>
+<tr><td>EC (<code>author.pem</code>)</td><td>inside each <code>.apk</code></td><td>anyone, at any time, against your public half</td></tr>
+<tr><td>usign (<code>release.key</code>)</td><td>the release manifest</td><td>a feed, once, when it ingests your release</td></tr>
+</table>
+
+<p>The usign signature is checked at ingest and then it is done — it never leaves the feed's CI.
+The EC signature travels <em>inside the package</em> all the way to the router, so somebody who
+does not trust the feed can still confirm you built what they installed. That is the one claim
+about a package that survives the feed serving it, and it is why feeds require it.</p>
+
+<h2>Build both release lines</h2>
+
+<pre>owlab build --release 25.12.5    # apk, for 25.12 and later
+owlab build --release 24.10.8    # ipk, for 24.10 and earlier</pre>
+
+<p>Both land in <code>dist/&lt;arch&gt;/</code>. An architecture-independent package produces two
+directories, and that is correct rather than a bug: apk requires <code>noarch</code> and rejects
+<code>all</code>, opkg has never heard of <code>noarch</code>.</p>
+
+<pre>dist/
+├── noarch/my-app-1.0.0-r1.apk
+└── all/my-app_1.0.0-r1_all.ipk</pre>
+
+<p>Shipping only 25.12 abandons everyone who has not upgraded — routers stay on a release for
+years.</p>
+
+<div class="note"><strong>Build before you release, even if sync worked.</strong>
+<code>luci.mk</code> minifies JS and CSS; <code>owlab sync</code> does not. Code that works
+unminified and breaks minified is invisible until somebody builds a package.</div>
+
+<h2>Sign, then write the manifest — in that order</h2>
+
+<pre>owfeed sign --key env:OWFEED_AUTHOR_KEY
+owfeed release --repo "$GITHUB_REPOSITORY" --tag "$GITHUB_REF_NAME"</pre>
+
+<p><strong>The order is not a preference.</strong> <code>owfeed release</code> records every
+package's size and sha256, and signing appends bytes. Reverse them and the manifest describes files
+that no longer exist.</p>
+
+<p><code>owfeed release</code> writes <code>manifest.txt</code>: what belongs to this release, each
+file's size and hash, and which repository and tag it came from — signed with your usign key. It
+records the repository because <strong>a signature proves who wrote something, never what it is
+about</strong>. Without that line, a manifest lifted from another of your releases would verify
+perfectly as this one.</p>
+
+<h2>GitHub Actions</h2>
+
+<p class="kicker">.github/workflows/release.yml</p>
+<pre>name: release
+on:
+  push: { tags: ["v*"] }
+permissions: { contents: read }
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: owfeed/owlab/setup@v0.5.1
+      - uses: owfeed/owfeed/setup@v0.4.2
+
+      - run: owlab build --release 25.12.5
+      - run: owlab build --release 24.10.8
+
+      - name: Sign the packages, then write the manifest
+        env:
+          OWFEED_AUTHOR_KEY:  ${{ secrets.OWFEED_AUTHOR_KEY }}
+          OWFEED_RELEASE_KEY: ${{ secrets.OWFEED_RELEASE_KEY }}
+        run: |
+          owfeed sign --key env:OWFEED_AUTHOR_KEY
+          owfeed release
+
+      - run: gh release create "${{ github.ref_name }}" --generate-notes
+             dist/*/*.apk dist/*/*.ipk dist/manifest.txt*
+        env: { GH_TOKEN: ${{ github.token }} }</pre>
+
+<p><code>owfeed release</code> reads the repository and tag from <code>GITHUB_REPOSITORY</code> and
+<code>GITHUB_REF_NAME</code> on GitHub, and from <code>CI_PROJECT_PATH</code> and
+<code>CI_COMMIT_TAG</code> on GitLab, so the flags are only for overriding them.</p>
+
+<div class="note"><strong>Keep the signing steps in a job that pull requests cannot reach.</strong>
+A fork's pull request runs your build; a secret reachable from it is a secret published. Gate on the
+tag, as above, or use a separate job with an <code>environment:</code>.</div>
+
+<h2>GitLab CI</h2>
+
+<pre>release:
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    - wget -qO- https://github.com/owfeed/owlab/releases/download/v0.5.1/owlab_0.5.1_linux_amd64.tar.gz | tar xz
+    - wget -qO owfeed https://github.com/owfeed/owfeed/releases/latest/download/owfeed-linux-amd64
+    - chmod +x owfeed &amp;&amp; export PATH="$PWD:$PATH"
+    - owlab build --release 25.12.5
+    - owlab build --release 24.10.8
+    - owfeed sign --key env:OWFEED_AUTHOR_KEY
+    - owfeed release</pre>
+
+<h2>Check it before anyone else does</h2>
+
+<pre>owfeed doctor --require-origin</pre>
+
+<p>Numbered findings, each saying what it costs and what to do. The ones that catch most first
+attempts:</p>
+
+<table>
+<tr><th>Finding</th><th>What it means</th></tr>
+<tr><td><code>arch: all</code></td><td>apk rejects it as uninstallable. Use <code>LUCI_PKGARCH:=all</code> and let the build translate it — that is what OpenWrt's own packaging does.</td></tr>
+<tr><td>OWF207</td><td>A <code>/etc/config/*</code> file is shipped but not in <code>conffiles:</code>, so sysupgrade replaces the user's settings with your defaults, silently, on every firmware upgrade.</td></tr>
+<tr><td>Version rejected</td><td>After <code>~</code> apk reads a commit hash, so only hex. Write <code>1.0_beta1</code>, not <code>1.0~beta</code>.</td></tr>
+<tr><td>Translations missing</td><td>LuCI reads compiled <code>.lmo</code> and ignores <code>.po</code>. Point <code>i18n.from:</code> at your catalogues.</td></tr>
+</table>
+
+<footer>
+<p>Next: <a href="/cookbook/feed/">Get into a feed</a> — so users get
+<code>apk upgrade</code> instead of a download link.</p>
+<p><a href="/legal/">Disclaimer and privacy</a></p>
+</footer>
+
+</main>
+</div>
+</body>
+</html>

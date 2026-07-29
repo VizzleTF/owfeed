@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ship your package — owfeed cookbook</title>
-<meta name="description" content="Build a LuCI package, test it on a real router, sign it, and get it into a feed users can apk add. Copy-paste files for GitHub Actions and GitLab CI.">
+<meta name="description" content="The path from a LuCI package on your machine to apk upgrade on somebody's router, in three stages: develop and test, build and release, get into a feed.">
 <link rel="canonical" href="https://owfeed.org/cookbook/">
 <link rel="alternate" hreflang="en" href="https://owfeed.org/cookbook/">
 <link rel="alternate" hreflang="ru" href="https://owfeed.org/cookbook/ru/">
@@ -26,6 +26,9 @@
 <h3>Publish</h3>
 <ul>
   <li><a href="/cookbook/" class="here">Ship your package</a></li>
+  <li class="sub"><a href="/cookbook/develop/">Develop and test</a></li>
+  <li class="sub"><a href="/cookbook/release/">Build and release</a></li>
+  <li class="sub"><a href="/cookbook/feed/">Get into a feed</a></li>
   <li><a href="/reference/">Commands and config</a></li>
   <li><a href="/problems/">When something breaks</a></li>
 </ul>
@@ -44,231 +47,67 @@
 
 <p class="kicker">Cookbook</p>
 <h1>Ship your package</h1>
-<p class="lead">For someone who wrote a LuCI app or theme and wants people to install it. Five
-steps: test it locally, wire up CI, sign a release, get into a feed, and cover the older release
-line. Copy the files and change the names.</p>
+<p class="lead">For someone who wrote a LuCI app or theme and wants people to install it. Three
+stages, each its own page, each useful without the next.</p>
 
-<h2>1. Test it on a real router</h2>
+<div class="forks">
+  <a class="fork" href="/cookbook/develop/">
+    <h4>1 · Develop and test</h4>
+    <p>Throwaway routers in Docker. Sync on save, assert in one command.</p>
+  </a>
+  <a class="fork" href="/cookbook/release/">
+    <h4>2 · Build and release</h4>
+    <p>Both release lines, signed with your own key, in CI.</p>
+  </a>
+  <a class="fork" href="/cookbook/feed/">
+    <h4>3 · Get into a feed</h4>
+    <p>So users get <code>apk upgrade</code>, not a download link.</p>
+  </a>
+</div>
 
-<p>You need Docker. Nothing else.</p>
+<h2>The whole path, in eight commands</h2>
 
-<pre>go install owfeed.org/owlab/cmd/owlab@latest
+<pre># 1 — while you work
+owlab up
+owlab sync --watch
+owlab test --release 25.12.5 --release 24.10.8 --install 'dist/*/my-app-*'
 
-cd my-luci-app
-owlab build --release 25.12.5    # real SDK build, writes dist/&lt;arch&gt;/
-owlab up                         # start a router
-owlab install owrt2512 dist/*/*.apk
-owlab open owrt2512              # LuCI in your browser</pre>
+# 2 — when you tag
+owlab build --release 25.12.5
+owlab build --release 24.10.8
+owfeed sign --key env:OWFEED_AUTHOR_KEY
+owfeed release
 
-<p>While you are working, skip the rebuild entirely. <code>sync</code> copies your sources into
-the running router and reloads LuCI:</p>
+# 3 — once, to join a feed
+#     open an issue with your repository, a tag and your public keys</pre>
 
-<pre>owlab sync --watch</pre>
+<h2>Where to stop</h2>
 
-<p>The whole check in one command — this is also what CI runs:</p>
+<p><strong>Stop after 1</strong> if the package is not released yet. owlab holds no keys and
+publishes nothing; it exists to answer "does this actually work on 24.10".</p>
 
-<pre>owlab test --release 25.12.5 --release 24.10.8 \
-  --install 'dist/*/luci-app-mine-*' \
-  --assert 'http 200 /cgi-bin/luci/admin/services/mine'</pre>
+<p><strong>Stop after 2</strong> if your package is installed occasionally, by people who can
+paste a command. A signed release asks your users for nothing but a signature check, and it does
+not make anyone's key a trust anchor on their router.</p>
 
-<p>It starts the routers, installs, asserts, tears down, and exits 0 or 1. Two things it does
-that a hand-written <code>curl</code> does not: it logs into LuCI first, because every admin page
-answers a redirect otherwise, and it fails a 200 whose body is an error page, because LuCI's
-dispatcher returns 200 with the traceback in it.</p>
+<p><strong>Go to 3</strong> when you want <code>apk upgrade</code> to work. That is the one thing
+a feed does that a release cannot — and <a href="/">the overview</a> argues the case for not
+running a feed where a release would do.</p>
 
-<div class="note"><strong>Test both release lines.</strong> 25.12 uses apk, 24.10 uses opkg, and
-they agree on almost nothing. A package that works on one can fail on the other.</div>
-
-<h3>A minimal owlab.yaml</h3>
-
-<p>Optional — the flags above work without one. It pays off once you want the same set of routers
-every time:</p>
-
-<pre>version: 1
-routers:
-  - id: owrt2512
-    release: "25.12.5"
-  - id: owrt2410
-    release: "24.10.8"</pre>
-
-<p>Pin exact point releases. <code>snapshot</code> images and <code>snapshot</code> feeds are
-rebuilt daily and independently, so installs start failing within a day.</p>
-
-<h2>2. Wire up CI</h2>
-
-<p class="kicker">.github/workflows/ci.yml</p>
-<pre>name: ci
-on: [push, pull_request]
-permissions: { contents: read }
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix: { release: ["25.12.5", "24.10.8"] }
-    steps:
-      - uses: actions/checkout@v5
-      - uses: owfeed/owlab/setup@v0.5.1
-      - run: owlab build --release ${{ matrix.release }}
-      - uses: owfeed/owlab/action@v0.5.1
-        with:
-          releases: ${{ matrix.release }}
-          install: dist/*/my-app-*
-          assert: |
-            package my-app
-            http 200 /cgi-bin/luci/admin/services/mine</pre>
-
-<p>There are no keys in this job, which is what makes it safe to run on a pull request from a
-fork.</p>
-
-<h3>GitLab CI</h3>
-
-<p>Same commands, different file. Both tools are single static binaries:</p>
-
-<pre>build:
-  image: docker:27
-  services: [docker:27-dind]
-  variables: { DOCKER_HOST: tcp://docker:2375, DOCKER_TLS_CERTDIR: "" }
-  script:
-    - wget -qO- https://github.com/owfeed/owlab/releases/download/v0.5.1/owlab_0.5.1_linux_amd64.tar.gz | tar xz
-    - export PATH="$PWD:$PATH"
-    - owlab build --release 25.12.5
-    - owlab test --release 25.12.5 --install 'dist/*/my-app-*'
-  artifacts:
-    paths: [dist/]</pre>
-
-<h2>3. Sign a release</h2>
-
-<p>Make the key once, on your machine, and put the private half in the repository's secrets:</p>
-
-<pre>owfeed keygen --usign -o release.key
-# writes release.key (private, 0600) and release.pub (public), and prints the key id
-
-gh secret set OWFEED_RELEASE_KEY &lt; release.key
-git add release.pub &amp;&amp; git commit -m "publish the public half"</pre>
-
-<div class="note"><strong>Commit the public half; never the private one.</strong>
-<code>release.pub</code> is how anyone — including a feed — checks that a release is really
-yours. Keep <code>release.key</code> out of the repository: a published signing key cannot be
-revoked. Note the key id that <code>keygen</code> prints; a feed will ask for it.</div>
-
-<p class="kicker">.github/workflows/release.yml</p>
-<pre>name: release
-on:
-  push: { tags: ["v*"] }
-permissions: { contents: read }
-jobs:
-  release:
-    runs-on: ubuntu-latest
-    permissions: { contents: write }
-    steps:
-      - uses: actions/checkout@v5
-      - uses: owfeed/owlab/setup@v0.5.1
-      - uses: owfeed/owfeed/setup@v0.4.1
-
-      - run: owlab build --release 25.12.5
-      - run: owlab build --release 24.10.8
-
-      - name: Sign the packages and write the manifest
-        env: { OWFEED_RELEASE_KEY: ${{ secrets.OWFEED_RELEASE_KEY }} }
-        run: owfeed release
-
-      - run: gh release create "${{ github.ref_name }}" --generate-notes
-             dist/*/*.apk dist/*/*.ipk dist/manifest.txt*
-        env: { GH_TOKEN: ${{ github.token }} }</pre>
-
-<p><code>owfeed release</code> reads the repository and tag from
-<code>GITHUB_REPOSITORY</code> and <code>GITHUB_REF_NAME</code> on GitHub, and from
-<code>CI_PROJECT_PATH</code> and <code>CI_COMMIT_TAG</code> on GitLab. Pass <code>--repo</code>
-and <code>--tag</code> only if you need to override them.</p>
-
-<h3>What the manifest is for</h3>
-
-<p><code>owfeed release</code> writes <code>manifest.txt</code>: every file in the release, its
-size and its hash, plus which repository and tag it belongs to — signed with your usign key.</p>
-
-<p>It records the repository and tag because a signature proves who wrote something, never what
-it is about. Without those lines, a manifest lifted from another of your releases would verify
-perfectly as this one.</p>
-
-<h2>4. Get into a feed</h2>
-
-<p>At this point users can install your package from a release. To give them
-<code>apk upgrade</code>, ask a feed to carry it —
-<a href="https://github.com/owfeed/owfeed-packages">owfeed-packages</a> is one.</p>
-
-<ol class="steps">
-<li><strong>Publish a release with a signed manifest.</strong> That is step 3. The feed verifies
-it before touching anything.</li>
-<li><strong>Open an issue</strong> from the <em>Request package publication</em> template:
-repository, a tag, your public key and its id.</li>
-<li><strong>A bot checks it within a minute</strong> — the release exists, the manifest verifies
-against the key you claim, the format is one the feed reads. It says what is wrong, if
-anything.</li>
-<li><strong>A person reviews the key.</strong> The only manual step, and not skippable: adding a
-key is the whole trust decision.</li>
-<li><strong>After that it is automatic.</strong> Every tag you push is picked up within the hour.</li>
-</ol>
-
-<h3>Show it in your README</h3>
-
-<p>Once a feed carries your package it publishes two badges for it, and they update whenever the
-feed does. They are rendered from the index the feed just built, so they cannot claim a version it
-is not serving:</p>
-
-<pre>[![owfeed](https://img.shields.io/endpoint?url=https://repo.owfeed.org/badge/my-app.json)](https://owfeed.org/install/)
-[![owfeed](https://img.shields.io/endpoint?url=https://repo.owfeed.org/badge/my-app-releases.json)](https://owfeed.org/install/)</pre>
-
-<p>The first shows the version the feed serves; the second, the release lines it serves it on.</p>
-
-<div class="note"><strong>Publish a manifest and updates land unattended.</strong> Publish bare
-files instead and every update waits for a human, because a signature over the files does not say
-which files a release contains.</div>
-
-<h3>Check that it installs from the feed, not just from a file</h3>
-
-<p>Installing a file proves the package works. Installing it <strong>by name</strong> out of a
-signed index proves the channel works — that the index parses, the URL does not redirect, and
-the key on the router matches the one that signed it:</p>
-
-<pre>owlab test --release 25.12.5 \
-  --feed 'https://repo.owfeed.org/releases/25.12/x86_64/packages.adb' \
-  --feed-key ./owfeed-packages.pem \
-  --install my-app \
-  --assert 'http 200 /cgi-bin/luci/admin/services/mine'</pre>
-
-<p>Nothing is installed with <code>--allow-untrusted</code> here. The index's signature is what
-makes the package acceptable.</p>
-
-<h2>5. Already shipping on 24.10? Add 25.12</h2>
-
-<p>You do not need to port anything. The same Makefile produces an apk:</p>
-
-<pre>owlab build --release 25.12.5
-owlab test  --release 25.12.5 --install 'dist/*/my-app-*'</pre>
-
-<p>If it builds and the page loads, publish both lines from one release job as in step 3. Two
-things usually need a look:</p>
+<h2>What each stage needs</h2>
 
 <table>
-<tr><th>What</th><th>Why</th></tr>
-<tr><td><code>conffiles</code></td><td>Every <code>/etc/config/*</code> your package ships must be declared. Otherwise sysupgrade replaces the user's settings with your defaults, silently, on every firmware upgrade.</td></tr>
-<tr><td><code>arch: all</code></td><td>apk rejects <code>all</code> as uninstallable. Write <code>LUCI_PKGARCH:=all</code> and let the build translate it — that is what OpenWrt's own packaging does.</td></tr>
+<tr><th>Stage</th><th>Requires</th></tr>
+<tr><td>Develop and test</td><td>Docker. Nothing else.</td></tr>
+<tr><td>Build and release</td><td>Two keys, made once. No toolchain to install: the apk tools are fetched from the OpenWrt SDK and verified against a pinned key.</td></tr>
+<tr><td>Get into a feed</td><td>A signed release, and a feed willing to carry it.</td></tr>
 </table>
 
-<p>If your package is a theme, an app, a script or a static binary, you do not need the SDK at
-all. <code>owfeed build</code> packages a directory that is already laid out the way it should
-install, in seconds instead of a toolchain download.</p>
-
-<h2>What your users do</h2>
-
-<p>Once you are in a feed, the whole instruction is three commands — put it in your README, or
-link to <a href="/install/">the install page</a>, which covers both release lines and the
-mistakes that cost people their upgrades.</p>
-
 <footer>
+<p>Reference: <a href="/reference/">every command and config field</a> ·
+<a href="/problems/">when something breaks</a></p>
 <p>A worked example, end to end:
-<a href="https://github.com/VizzleTF/luci-theme-footstrap">luci-theme-footstrap</a>. ·
-Stuck? <a href="/problems/">When something breaks</a>.</p>
+<a href="https://github.com/VizzleTF/luci-theme-footstrap">luci-theme-footstrap</a>.</p>
 <p><a href="/legal/">Disclaimer and privacy</a></p>
 </footer>
 
