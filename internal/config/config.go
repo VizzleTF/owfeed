@@ -41,11 +41,6 @@ type Config struct {
 	// yaml.Node's own fields.
 	Overrides []map[string]any `yaml:"overrides"`
 	Retention map[string]any   `yaml:"retention"`
-
-	// keyringWasDefaulted records that signing.keyring-package came from the default
-	// rather than from the user, so that "not implemented" is reported only to someone
-	// who actually asked for it.
-	keyringWasDefaulted bool
 }
 
 // Feed identifies the feed and where it will be served from.
@@ -463,7 +458,6 @@ func (c *Config) applyDefaults() error {
 	}
 	if c.Signing.KeyringPackage == nil {
 		c.Signing.KeyringPackage = boolPtr(true)
-		c.keyringWasDefaulted = true
 	}
 	if c.Signing.Key == "" {
 		c.Signing.Key = "env:" + DefaultKeyEnv

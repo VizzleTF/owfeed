@@ -461,8 +461,3 @@ func (c *Config) notImplemented(path string) error {
 	}
 	return nil
 }
-
-// keyringDefaulted reports whether keyring-package came from the default rather than
-// from the user. The default is on because that is where the design is going, but a
-// user who explicitly asked for it must not be told it happened when it did not.
-func keyringDefaulted(c *Config) bool { return c.keyringWasDefaulted }
