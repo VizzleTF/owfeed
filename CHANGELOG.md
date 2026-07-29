@@ -2,6 +2,15 @@
 
 Dates are when the tag was cut. Anything not listed is documentation or tests.
 
+## Unreleased
+
+- **Fixed:** `owfeed/setup` used twice in one job failed the second time. `gh
+  release download` refuses to overwrite a file it downloaded a minute earlier,
+  and the action had no reason to download it again -- it now returns early when
+  the requested version is already installed, and clobbers when it is not. Found
+  in owlab's copy of the same forty lines, fixed in both, which is the cost of the
+  duplication those forty lines are worth.
+
 ## v0.1.7 — 2026-07-28
 
 Both of these were found by the first real run of `feed.yml`, which is the point

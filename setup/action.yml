@@ -59,13 +59,32 @@ runs:
         dir="${RUNNER_TEMP}/owfeed"
         mkdir -p "$dir"
 
+        # Already installed at this version, in this job. Using the action twice in
+        # one job is an ordinary thing to want, and without this the second use dies
+        # in `gh release download`, which refuses to overwrite a file it downloaded a
+        # minute earlier. Matched on the version rather than on the file existing:
+        # two steps asking for different versions have to get different binaries, or
+        # the second step's `version:` is a lie.
+        #
+        # `latest` never short-circuits -- it has not been resolved to a tag yet, and
+        # resolving it just to compare would cost the request the shortcut saves.
+        if [ "$OWFEED_VERSION" != "latest" ] && [ -x "$dir/owfeed" ] \
+           && [ "$("$dir/owfeed" version 2>/dev/null | awk '{print $2}')" = "${OWFEED_VERSION#v}" ]; then
+          echo "owfeed ${OWFEED_VERSION#v} is already installed in this job"
+          echo "$dir" >> "$GITHUB_PATH"
+          exit 0
+        fi
+
+        # --clobber, because reaching here with the file present means it is a
+        # different version than the one being asked for; the check above already
+        # returned on an exact match.
         if [ "$OWFEED_VERSION" = "latest" ]; then
           echo "::warning::owfeed pinned to \"latest\"; pin a tag so the tool that signs your feed cannot change between runs"
-          gh release download --repo VizzleTF/owfeed --pattern "$asset" --dir "$dir"
+          gh release download --repo VizzleTF/owfeed --pattern "$asset" --dir "$dir" --clobber
           tag=$(gh release view --repo VizzleTF/owfeed --json tagName --jq .tagName)
         else
           tag="$OWFEED_VERSION"
-          gh release download "$tag" --repo VizzleTF/owfeed --pattern "$asset" --dir "$dir"
+          gh release download "$tag" --repo VizzleTF/owfeed --pattern "$asset" --dir "$dir" --clobber
         fi
 
         # Verify BEFORE the binary is ever executed or put on PATH. A check that
