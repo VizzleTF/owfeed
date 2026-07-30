@@ -1,56 +1,65 @@
 name: owfeed package
 
-# A reusable workflow for an author's repository: check on every push, and on a tag
-# build, sign and publish a release a feed can ingest.
+# The release half of an author's repository: sign what was built, write a signed
+# manifest, and publish a release a feed can ingest.
 #
-# `feed.yml` is the sibling of this file and does the same job for the other role. The
-# two halves of the ecosystem had one shape between them, so every repository that
-# publishes packages wrote this one out by hand — four of them, at 190 to 630 lines
-# each, with `owfeed release --repo` typed out four times.
+# IT DOES NOT BUILD, and that boundary is the ecosystem's rather than this file's.
+# docs/ECOSYSTEM.md puts a package repository at `owlab (build/test) + owfeed
+# (sign/release)`, split by whose key is in the job: building and asserting on a real
+# router need none, signing needs one.
 #
-# WHAT THE SHAPE ENFORCES, which is the part that is easy to get wrong:
+# The first draft of this file did build, and it was wrong in a way worth recording.
+# A called workflow is ONE JOB to its caller, so nothing can sit between its build and
+# its release — which put the caller's owlab verification after the release instead of
+# before it, and a tag published a package no router had installed. Moving the
+# verification inside was not open either: owfeed may not reach for owlab in the
+# reusable workflow other people call. The boundary was in the wrong place, not the
+# ordering.
 #
-#   - The build job never sees a key. It runs the author's own build script, which on
-#     a pull request came out of a fork. Keys appear only in the release job, which
-#     runs on a tag and nowhere else.
-#   - Every push gets `owfeed check`: build, sign, index and doctor against keys
-#     generated for the run and discarded. The pull request exercises the same
-#     pipeline as the release rather than a second one that drifts.
+# WHAT THE SHAPE ENFORCES, and each of these was got wrong somewhere in the five
+# repositories this replaces:
+#
 #   - The release is created as a DRAFT and published in a separate step. `latest`
-#     moves the moment a release is published, and the upload action creates the
-#     release before attaching assets — so a router polling in that window resolves
-#     `releases/latest/download/manifest.txt` to a release that has none, and reports
-#     a hard error. Three of the four repositories had this window open.
-#   - Every signature is verified before the release is published, with the key a
-#     router will use. A secret rotated without the public half being committed
-#     otherwise publishes a release that every installer rejects with "BAD
-#     SIGNATURE" — indistinguishable from the attack the signature exists to stop.
+#     moves the moment a release is published, and the upload action attaches assets
+#     AFTER creating it — so a router polling in that window resolves
+#     `releases/latest/download/manifest.txt` to a release that has none and reports a
+#     hard error. Three of the four repositories had that window open.
+#   - Every signature is verified before publishing, against the public key committed
+#     in the repository. A secret rotated without the public half being updated
+#     otherwise ships a release every installer rejects with "BAD SIGNATURE" —
+#     indistinguishable from the attack the signature exists to prevent.
+#   - The manifest is fetched back through latest/download and compared with the one
+#     just built. A 404 there means every install would have failed, and this is the
+#     last moment it is a red build rather than a bug report.
+#   - `owfeed release --repo` is written once. It was typed out by hand in four
+#     repositories, and the `--repo` line is what stops a manifest lifted from another
+#     of the author's releases verifying perfectly under this one's name.
 #
-# Usage:
+# THERE IS NO SMOKE STEP. `owfeed smoke` asks whether a FEED installs without
+# --allow-untrusted, and an author publishing release assets has no feed to ask about.
+# The question an author wants — does the package work on a real router — is owlab's,
+# in the caller's own verify job, where no key exists.
+#
+# Usage. The caller owns the build and the verification; this owns the keys:
 #
 #   jobs:
-#     gates:                  # your own checks, ordinary jobs
+#     build:                    # no key: stage, `owfeed check`, `owfeed build`, upload
 #       ...
-#     package:
-#       needs: gates
+#     verify:                   # no key: owlab installs it on a real router
+#       needs: build
+#       ...
+#     release:
+#       needs: [build, verify]  # THIS is what keeps a tag from publishing untested bytes
+#       if: startsWith(github.ref, 'refs/tags/v')
 #       permissions:
-#         contents: write     # the release job creates the release
+#         contents: write
 #       uses: owfeed/owfeed/.github/workflows/package.yml@v0.5.0
 #       secrets:
 #         sign-key: ${{ secrets.OWFEED_SIGN_KEY }}
 #         usign-key: ${{ secrets.OWFEED_RELEASE_KEY }}
 #       with:
 #         owfeed-version: v0.5.0
-#         stage: npm ci --ignore-scripts && ./tools/stage.sh
-#
-# THERE IS NO SMOKE STEP HERE, and that is doctrine rather than an omission.
-# `owfeed smoke` asks whether a FEED installs without --allow-untrusted, and an author
-# publishing release assets has no feed to ask about. The question an author wants —
-# does the package work on a real router — is owlab's, and it belongs in a job of the
-# caller's own, where no key exists:
-#
-#     - uses: owfeed/owlab/action@v0.5.1
-#       with: { releases: "25.12.5", install: dist/noarch/*.apk, assert: ... }
+#         pre-release: sh tools/stage-release.sh
 #
 # The setup action is referenced by exact tag rather than a floating major, so pinning
 # this workflow pins everything it runs.
@@ -62,14 +71,6 @@ on:
         description: owfeed release tag to install. Pin it.
         required: true
         type: string
-      stage:
-        description: >-
-          Shell that produces the tree owfeed packages, run in the job that has no
-          key. This is the half owfeed deliberately does not do: it packages a
-          directory, it does not build one.
-        required: false
-        type: string
-        default: ""
       sign-also:
         description: >-
           Extra files to sign with the release key, space separated, resolved inside
@@ -79,6 +80,13 @@ on:
         required: false
         type: string
         default: ""
+      artifact:
+        description: >-
+          Name of the artifact the caller's build job uploaded, holding one directory
+          per architecture with the built packages in them.
+        required: false
+        type: string
+        default: owfeed-packages
       pre-release:
         description: >-
           Shell run in the release job after the packages are downloaded and before
@@ -102,15 +110,6 @@ on:
         required: false
         type: string
         default: ""
-      source-date-epoch:
-        description: >-
-          Fixed build timestamp. Empty means the timestamp of the commit being built,
-          which is the right default for a package repository: identity should depend
-          on what went into the package and nothing else, so re-running a release over
-          the same commit produces the same bytes.
-        required: false
-        type: string
-        default: ""
       runs-on:
         required: false
         type: string
@@ -130,9 +129,6 @@ on:
           installed, and opkg cannot verify a standalone .ipk at all.
         required: false
     outputs:
-      version:
-        description: The version that was built, as `owfeed plan` resolved it.
-        value: ${{ jobs.build.outputs.version }}
       released:
         description: '"true" when a release was published.'
         value: ${{ jobs.release.outputs.released || 'false' }}
@@ -141,65 +137,12 @@ permissions:
   contents: read
 
 jobs:
-  # No key, deliberately: this job runs the caller's build script, and on a pull
-  # request that script came out of a fork.
-  build:
-    runs-on: ${{ inputs.runs-on }}
-    permissions:
-      contents: read
-    outputs:
-      version: ${{ steps.plan.outputs.version }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # `version-from: tag` reads the tag, and a shallow checkout has none.
-          fetch-depth: 0
-
-      - uses: owfeed/owfeed/setup@v0.4.5
-        with:
-          version: ${{ inputs.owfeed-version }}
-
-      - name: Resolve the build epoch
-        env:
-          FIXED: ${{ inputs.source-date-epoch }}
-        run: echo "SOURCE_DATE_EPOCH=${FIXED:-$(git log -1 --format=%ct)}" >> "$GITHUB_ENV"
-
-      # Through env, never interpolated into `run:`. A caller that passed a branch
-      # name into this input would otherwise be handing whoever wrote it a shell.
-      - if: inputs.stage != ''
-        env:
-          SCRIPT: ${{ inputs.stage }}
-        run: bash -euo pipefail -c "$SCRIPT"
-
-      # What is about to be built, named before it exists. The release job reads the
-      # version from here rather than deriving it a second time.
-      - id: plan
-        run: |
-          owfeed plan
-          v=$(owfeed plan --json | jq -r '.packages[0].version')
-          echo "version=$v" >> "$GITHUB_OUTPUT"
-
-      # Everything that can be checked without a key: build, sign, index and doctor
-      # on keys owfeed generates and throws away. It leaves dist/ untouched.
-      - run: owfeed check
-
-      - run: owfeed build
-
-      # dist/root and dist/scripts are staging, not output: uploading them would put
-      # the whole payload tree into an artifact the release job then globs.
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: owfeed-packages
-          path: |
-            dist/*/*.apk
-            dist/*/*.ipk
-          if-no-files-found: error
-          retention-days: 1
-
-  # The only job that holds a key, and it exists only for a tag.
   release:
+    # A guard, not the gate: the caller decides when to call this at all, and its own
+    # `needs: [build, verify]` is what keeps a tag from publishing something no router
+    # has installed. This is here so a caller who forgets the `if:` cannot publish off
+    # a branch.
     if: startsWith(github.ref, 'refs/tags/')
-    needs: build
     runs-on: ${{ inputs.runs-on }}
     permissions:
       contents: write
@@ -217,7 +160,7 @@ jobs:
       # `owfeed release` walks.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: owfeed-packages
+          name: ${{ inputs.artifact }}
           path: dist
           merge-multiple: true
 
