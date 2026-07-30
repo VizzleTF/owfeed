@@ -1,0 +1,267 @@
+name: owfeed package
+
+# The release half of an author's repository: sign what was built, write a signed
+# manifest, and publish a release a feed can ingest.
+#
+# IT DOES NOT BUILD, and that boundary is the ecosystem's rather than this file's.
+# docs/ECOSYSTEM.md puts a package repository at `owlab (build/test) + owfeed
+# (sign/release)`, split by whose key is in the job: building and asserting on a real
+# router need none, signing needs one.
+#
+# The first draft of this file did build, and it was wrong in a way worth recording.
+# A called workflow is ONE JOB to its caller, so nothing can sit between its build and
+# its release — which put the caller's owlab verification after the release instead of
+# before it, and a tag published a package no router had installed. Moving the
+# verification inside was not open either: owfeed may not reach for owlab in the
+# reusable workflow other people call. The boundary was in the wrong place, not the
+# ordering.
+#
+# WHAT THE SHAPE ENFORCES, and each of these was got wrong somewhere in the five
+# repositories this replaces:
+#
+#   - The release is created as a DRAFT and published in a separate step. `latest`
+#     moves the moment a release is published, and the upload action attaches assets
+#     AFTER creating it — so a router polling in that window resolves
+#     `releases/latest/download/manifest.txt` to a release that has none and reports a
+#     hard error. Three of the four repositories had that window open.
+#   - Every signature is verified before publishing, against the public key committed
+#     in the repository. A secret rotated without the public half being updated
+#     otherwise ships a release every installer rejects with "BAD SIGNATURE" —
+#     indistinguishable from the attack the signature exists to prevent.
+#   - The manifest is fetched back through latest/download and compared with the one
+#     just built. A 404 there means every install would have failed, and this is the
+#     last moment it is a red build rather than a bug report.
+#   - `owfeed release --repo` is written once. It was typed out by hand in four
+#     repositories, and the `--repo` line is what stops a manifest lifted from another
+#     of the author's releases verifying perfectly under this one's name.
+#
+# THERE IS NO SMOKE STEP. `owfeed smoke` asks whether a FEED installs without
+# --allow-untrusted, and an author publishing release assets has no feed to ask about.
+# The question an author wants — does the package work on a real router — is owlab's,
+# in the caller's own verify job, where no key exists.
+#
+# Usage. The caller owns the build and the verification; this owns the keys:
+#
+#   jobs:
+#     build:                    # no key: stage, `owfeed check`, `owfeed build`, upload
+#       ...
+#     verify:                   # no key: owlab installs it on a real router
+#       needs: build
+#       ...
+#     release:
+#       needs: [build, verify]  # THIS is what keeps a tag from publishing untested bytes
+#       if: startsWith(github.ref, 'refs/tags/v')
+#       permissions:
+#         contents: write
+#       uses: owfeed/owfeed/.github/workflows/package.yml@v0.5.0
+#       secrets:
+#         sign-key: ${{ secrets.OWFEED_SIGN_KEY }}
+#         usign-key: ${{ secrets.OWFEED_RELEASE_KEY }}
+#       with:
+#         owfeed-version: v0.5.0
+#         pre-release: sh tools/stage-release.sh
+#
+# The setup action is referenced by exact tag rather than a floating major, so pinning
+# this workflow pins everything it runs.
+
+on:
+  workflow_call:
+    inputs:
+      owfeed-version:
+        description: owfeed release tag to install. Pin it.
+        required: true
+        type: string
+      sign-also:
+        description: >-
+          Extra files to sign with the release key, space separated, resolved inside
+          dist/. An installer fetched by `curl | sh` belongs here: it is not a package
+          and has no place in the manifest's inventory, but it is executable code
+          handed to root, and a careful admin can verify it out of band.
+        required: false
+        type: string
+        default: ""
+      artifact:
+        description: >-
+          Name of the artifact the caller's build job uploaded, holding one directory
+          per architecture with the built packages in them.
+        required: false
+        type: string
+        default: owfeed-packages
+      pre-release:
+        description: >-
+          Shell run in the release job after the packages are downloaded and before
+          anything is signed. Anything that has to be an asset and is not a package —
+          release notes cut from a CHANGELOG, an installer — is written into dist/
+          here, so it is covered by the same signing pass.
+        required: false
+        type: string
+        default: ""
+      notes-file:
+        description: Path to a file whose contents become the release body.
+        required: false
+        type: string
+        default: ""
+      verify-with:
+        description: >-
+          Path to the usign PUBLIC key committed in the repository. Every signature is
+          checked against it before the release is published — which catches a secret
+          rotated without the public half being updated, where the symptom is
+          otherwise indistinguishable from tampering.
+        required: false
+        type: string
+        default: ""
+      runs-on:
+        required: false
+        type: string
+        default: ubuntu-latest
+    secrets:
+      sign-key:
+        description: >-
+          EC prime256v1 SEC1 PEM. Its signature goes inside the .apk and travels to
+          the router; apk signature blocks are additive, so a feed that re-signs the
+          package adds its own beside this one.
+        required: false
+      usign-key:
+        description: >-
+          usign secret key. Signs manifest.txt — the inventory of the whole release,
+          which the per-package signatures cannot cover. usign because it is the
+          scheme OpenWrt already ships, so a router verifies it with nothing
+          installed, and opkg cannot verify a standalone .ipk at all.
+        required: false
+    outputs:
+      released:
+        description: '"true" when a release was published.'
+        value: ${{ jobs.release.outputs.released || 'false' }}
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    # A guard, not the gate: the caller decides when to call this at all, and its own
+    # `needs: [build, verify]` is what keeps a tag from publishing something no router
+    # has installed. This is here so a caller who forgets the `if:` cannot publish off
+    # a branch.
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ${{ inputs.runs-on }}
+    permissions:
+      contents: write
+    outputs:
+      released: ${{ steps.publish.outputs.released }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: owfeed/owfeed/setup@v0.4.5
+        with:
+          version: ${{ inputs.owfeed-version }}
+
+      # merge-multiple flattens the artifact's own wrapper away and leaves what is
+      # inside it alone, so dist/noarch and dist/all arrive intact — the layout
+      # `owfeed release` walks.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.artifact }}
+          path: dist
+          merge-multiple: true
+
+      # Through env, never interpolated into `run:` — the same rule as `stage:`.
+      - if: inputs.pre-release != ''
+        env:
+          SCRIPT: ${{ inputs.pre-release }}
+        run: bash -euo pipefail -c "$SCRIPT"
+
+      - name: Sign the packages
+        env:
+          OWFEED_SIGN_KEY: ${{ secrets.sign-key }}
+        run: |
+          set -euo pipefail
+          [ -n "${OWFEED_SIGN_KEY:-}" ] || {
+            echo "no sign-key: the published package would carry no evidence of who"
+            echo "built it, and no feed will carry it. Pass secrets.sign-key."
+            exit 1
+          }
+          owfeed sign
+
+      # `--repo` is written into the manifest and readers check it against where they
+      # fetched it from: a signature proves who wrote a file and never what it is
+      # about, so without that line a manifest lifted from another of the author's
+      # releases verifies perfectly under this one's name.
+      - name: Write and sign the manifest
+        env:
+          OWFEED_RELEASE_KEY: ${{ secrets.usign-key }}
+          ALSO: ${{ inputs.sign-also }}
+        run: |
+          set -euo pipefail
+          [ -n "${OWFEED_RELEASE_KEY:-}" ] || {
+            echo "no usign-key: a release without a signed manifest is one no feed can"
+            echo "ingest. Pass secrets.usign-key."
+            exit 1
+          }
+          args=""
+          for f in $ALSO; do args="$args --sign-also $f"; done
+          # shellcheck disable=SC2086
+          owfeed release --repo "$GITHUB_REPOSITORY" --tag "$GITHUB_REF_NAME" $args
+          cat dist/manifest.txt
+
+      # Release assets are flat, and owfeed leaves packages under a directory per
+      # architecture because apk derives a filename from name and version alone. The
+      # manifest names files without paths, which is what a router asks for, so
+      # flattening is what makes the manifest and the release page agree.
+      - name: Flatten
+        run: |
+          set -euo pipefail
+          for f in dist/*/*.apk dist/*/*.ipk dist/*/*.sig; do
+            [ -e "$f" ] || continue
+            mv "$f" dist/
+          done
+          rmdir dist/*/ 2>/dev/null || true
+          ls -l dist
+
+      - name: Verify every signature with the key a router will use
+        if: inputs.verify-with != ''
+        env:
+          PUB: ${{ inputs.verify-with }}
+        run: |
+          set -euo pipefail
+          n=0
+          for p in dist/*.apk dist/*.ipk dist/manifest.txt; do
+            [ -e "$p" ] || continue
+            [ -s "$p.sig" ] || { echo "no signature for $(basename "$p")"; exit 1; }
+            owfeed verify-artifact --key "$PUB" --signature "$p.sig" "$p"
+            echo "verified: $(basename "$p")"
+            n=$((n + 1))
+          done
+          [ "$n" -gt 0 ] || { echo "nothing was verified — the glob found no packages"; exit 1; }
+
+      # A DRAFT, flipped in the next step. See the note at the top of this file: the
+      # window between "release exists" and "assets attached" is one a router can fall
+      # into, and `latest` does not resolve to a draft.
+      - uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        with:
+          files: dist/*
+          body_path: ${{ inputs.notes-file }}
+          draft: true
+
+      - id: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release edit "$GITHUB_REF_NAME" --draft=false --repo "$GITHUB_REPOSITORY"
+          echo "released=true" >> "$GITHUB_OUTPUT"
+
+      # The last moment this is a red build rather than a bug report. A router fetches
+      # the manifest from the release CDN, not the API, and a 404 here means every
+      # install and every update check would have failed.
+      - name: The manifest resolves through latest/download
+        run: |
+          set -euo pipefail
+          url="https://github.com/$GITHUB_REPOSITORY/releases/latest/download/manifest.txt"
+          for i in 1 2 3 4 5; do
+            curl -fsSL --retry 2 -o "$RUNNER_TEMP/mf" "$url" && break
+            [ "$i" = 5 ] && { echo "$url does not resolve"; exit 1; }
+            sleep 5
+          done
+          diff -u dist/manifest.txt "$RUNNER_TEMP/mf" || {
+            echo "the manifest served by latest/download is not the one just built"; exit 1; }
+          echo "manifest.txt resolves and matches."
