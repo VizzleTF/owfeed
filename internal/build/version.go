@@ -3,6 +3,7 @@ package build
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -38,9 +39,61 @@ func ResolveVersion(p config.Package, root string) (string, error) {
 		}
 		v := strings.TrimSpace(string(b))
 		return v, validated(v)
+	case "tag":
+		v, err := versionFromTag(root, arg)
+		if err != nil {
+			return "", err
+		}
+		return v, validated(v)
 	default:
-		return "", fmt.Errorf("version-from: %q is not a version source; use makefile:PATH or file:PATH", p.VersionFrom)
+		return "", fmt.Errorf("version-from: %q is not a version source; use tag, makefile:PATH or file:PATH", p.VersionFrom)
 	}
+}
+
+// versionFromTag takes the version from the git tag being built.
+//
+// WHAT THIS REPLACES is the same eight lines of shell in every repository that
+// publishes packages: read GITHUB_REF, strip refs/tags/, strip the v, fall back to
+// something for a branch build, write it to a file for owfeed to read back. Written
+// once per repository and subtly different each time.
+//
+// It also makes `owfeed plan` answer before anything is staged. `version-from:
+// file:./dist/VERSION` cannot: the file is written by the build script, so the
+// question "what version will this release be" has no answer until the thing whose
+// output you wanted to preview has already run.
+//
+// `prefix` is stripped from the front, and `v` is the only one anyone uses:
+//
+//	version-from: tag        3.4.0    -> 3.4.0
+//	version-from: tag:v      v3.4.0   -> 3.4.0
+//
+// AND NOTHING ELSE IS DONE TO IT. A tag that is not a usable apk version — no
+// revision, or a Debian-style `-1` where apk wants `-r1` — is reported by
+// ValidateVersion, with the position and a hint. Quietly rewriting it here would
+// decide on the author's behalf what revision they are publishing, and hide the one
+// message that explains why it matters.
+func versionFromTag(root, prefix string) (string, error) {
+	tag := taggedRef()
+	if tag == "" {
+		out, err := exec.Command("git", "-C", root, "describe", "--tags", "--abbrev=0").Output()
+		if err != nil {
+			return "", fmt.Errorf("version-from: tag, but this is not a tagged build and git names no tag here: %w", err)
+		}
+		tag = strings.TrimSpace(string(out))
+	}
+	return strings.TrimPrefix(tag, prefix), nil
+}
+
+// taggedRef is the tag CI is building, and empty for anything else.
+//
+// GITHUB_REF is checked rather than GITHUB_REF_NAME alone: on a branch or a pull
+// request GITHUB_REF_NAME is still set — to the branch name, or to `7/merge` — and
+// taking that for a tag would produce a version out of a branch name.
+func taggedRef() string {
+	if ref := os.Getenv("GITHUB_REF"); strings.HasPrefix(ref, "refs/tags/") {
+		return strings.TrimPrefix(ref, "refs/tags/")
+	}
+	return ""
 }
 
 func validated(v string) error {
