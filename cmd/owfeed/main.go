@@ -70,9 +70,16 @@ type app struct {
 	frozenLock bool
 	cacheRoot  string
 
+	// checkKeys is set only by `owfeed check`, and replaces whatever keys the config
+	// names with the throwaway pair that command generates. See check.go.
+	checkKeys *checkKeys
+
 	out io.Writer
 	err io.Writer
 }
+
+// checkKeys holds two key specs, each "file:PATH".
+type checkKeys struct{ ec, usign string }
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -145,6 +152,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = a.index(ctx, cmdArgs)
 	case "doctor":
 		err = a.doctor(ctx, cmdArgs)
+	case "check":
+		err = a.check(ctx, cmdArgs)
 	case "init":
 		err = a.init_(cmdArgs)
 	case "install-snippet":
@@ -226,6 +235,8 @@ Commands:
   sign        sign the packages in a directory
   index       fan out the signed packages and build a signed index per architecture
   doctor      check the built tree against everything that has burned a feed before
+  check       build, sign, index and doctor, on throwaway keys — the whole of what
+              CI can verify before a tag, with no secret in scope
   publish     gate the tree on those checks and hand it to the target
   smoke       install the built feed on a real OpenWrt image
   verify      check the published feed from outside, over its documented URL
@@ -255,6 +266,15 @@ func (a *app) loadConfig() (*config.Config, error) {
 			return nil, fail(exitConfig, "no %s here; run `owfeed init` to create one", a.configPath)
 		}
 		return nil, wrap(exitConfig, err)
+	}
+	// `owfeed check` runs the same stages with keys that live for the length of the
+	// run. Overriding here rather than in each stage is what lets it reuse them
+	// unchanged, and it is the only thing that ever writes to this field.
+	if a.checkKeys != nil {
+		signPackages := true
+		c.Signing.Key = a.checkKeys.ec
+		c.Signing.UsignKey = a.checkKeys.usign
+		c.Signing.SignPackages = &signPackages
 	}
 	return c, nil
 }
