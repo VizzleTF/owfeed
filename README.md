@@ -380,6 +380,20 @@ owfeed --frozen-lock build
 owfeed release --repo "$GITHUB_REPOSITORY" --tag "$GITHUB_REF_NAME"
 ```
 
+On a pull request there is no tag and there must be no key — a signing secret in the job that runs
+a fork's code is a secret the fork can aim work at. One command covers everything that can be
+checked without one:
+
+```sh
+owfeed check                      # build, sign, index, doctor --require-origin
+```
+
+It generates a throwaway key of each kind, uses them for the length of the run and discards them.
+What it answers is whether the package builds, signs and indexes and whether the tree survives
+`doctor` — none of which depends on whose key signed it. **It needs no `signing:` block**, which is
+the other reason it exists: repositories that publish release assets and no feed were declaring one
+purely because `index` refuses to run without a usign key.
+
 `release` writes `manifest.txt` — what belongs to this release, each file's size and hash — and
 signs it with a usign key, the scheme OpenWrt already ships so a router can verify it with nothing
 installed. The manifest records which repository it belongs to and readers check that: a signature

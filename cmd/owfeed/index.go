@@ -470,6 +470,13 @@ func (a *app) buildKeyring(ctx context.Context, c *config.Config, l *lock.Lock, 
 			a.lockPath(), l.Keyring.Version, id)
 		a.logf("record it with `owfeed lock --update` when you next have the signing key")
 	}
+	// `owfeed check` signs with a key it generated a moment ago, so it disagrees with
+	// the record every single time and nothing has rotated. The keyring is still built
+	// — the point of check is that the tree comes out the shape a publish would make
+	// it — it is only the comparison below that has nothing to say here.
+	if a.checkKeys != nil {
+		l.Keyring.Identity = id.String()
+	}
 	// A key that disagrees with the record is a rotation nobody wrote down. Building
 	// anyway would publish the new key under the old version, which every router
 	// declines as an upgrade it already has.
