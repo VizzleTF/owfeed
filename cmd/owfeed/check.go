@@ -131,7 +131,8 @@ func (a *app) ephemeralKeys() (func(), error) {
 	a.checkKeys = &checkKeys{ec: "env:" + ecVar, usign: "env:" + usignVar}
 	return func() {
 		a.checkKeys = nil
-		os.Unsetenv(ecVar)
-		os.Unsetenv(usignVar)
+		// Unsetenv fails only on a name with a NUL or an =, which these are not.
+		_ = os.Unsetenv(ecVar)
+		_ = os.Unsetenv(usignVar)
 	}, nil
 }
