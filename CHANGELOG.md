@@ -2,6 +2,60 @@
 
 Dates are when the tag was cut. Anything not listed is documentation or tests.
 
+## v0.5.0 — 2026-07-30
+
+The author's side of the ecosystem gets the shape the feed's side has had since
+`feed.yml`. Five repositories were hand-rolling it, at 190 to 630 lines each, with
+`owfeed release --repo` typed out in four of them.
+
+- **Added:** `owfeed check` — build, sign, index and `doctor --require-origin`, against
+  an EC key and a usign key generated for the run and discarded. It is the whole of what
+  CI can verify before a tag, with no secret in scope, and it replaces the same
+  two-`keygen`-and-four-commands block in every repository that publishes packages.
+  It needs no `signing:` block, which removes the reason one appeared in repositories
+  that publish no feed at all: `index` refuses to run without a usign key, so authors
+  were declaring one pointing at a variable holding nothing. It leaves nothing behind —
+  everything it produces is signed by a key that stops existing, so it works in a
+  temporary directory and `dist/` keeps only what was staged into it.
+
+- **Added:** `owfeed plan` — what a build would produce, offline, before it produces it.
+  Filenames come from the functions `build` calls rather than a format string, including
+  the rename opkg forces where the architecture apk calls `noarch` is `all`. `--json` is
+  versioned (`owfeed-plan 1`) for a later job to read. An unresolvable version is
+  reported rather than fatal: `version-from: file:./dist/VERSION` names a file the build
+  script writes, and refusing to answer would make the command useless exactly when it
+  is most wanted.
+
+- **Added:** `version-from: tag`, optionally with a prefix to strip (`tag:v`). Replaces
+  the eight lines of shell every package repository wrote to turn `GITHUB_REF` into a
+  version, and lets `plan` answer before anything is staged. `GITHUB_REF` is read rather
+  than `GITHUB_REF_NAME`, which on a branch or a pull request is still set and would
+  produce a version out of a branch name. The tag is otherwise untouched: a version apk
+  cannot parse is already reported by `ValidateVersion` with a position and a hint.
+
+- **Added:** `.github/workflows/package.yml` — the author-side sibling of `feed.yml`,
+  and the release half only. It signs, writes the signed manifest, verifies every
+  signature against the public key committed in the repository, publishes as a draft and
+  flips it, then fetches the manifest back through `latest/download` to prove it
+  resolves. Building and asserting on a real router stay with the caller, because a
+  called workflow is one job to its caller and nothing can sit between its build and its
+  release — which is where the owlab verification has to go if a tag is not to publish
+  bytes no router has installed.
+
+- **Added:** `doctor` reads the payload. **OWF212** — JSON in `acl.d` or `menu.d` that
+  does not parse: rpcd and LuCI both skip the file without a word, so the ACL is granted
+  to nobody or the menu entry never appears. **OWF213** — shell in the payload that does
+  not parse, `/etc/uci-defaults/*` above all, which runs once at first boot and is
+  deleted whether it worked or not, so the package's registration never happens and the
+  evidence removes itself.
+
+- **Fixed:** OWF701 fired on every repository that publishes release assets rather than
+  a feed. It gated on the README mentioning `feed.url`, which for those repositories is
+  their own project page and appears in every badge and link — and its advice was to
+  paste in a snippet naming URLs they do not serve, so following it documented a 404 to
+  silence a finding about 404s. It now gates on the line that configures the repository,
+  which carries the feed's name and appears for no other reason.
+
 ## v0.4.5 — 2026-07-29
 
 - **Fixed:** the install instructions claimed a stock image cannot fetch over HTTPS until

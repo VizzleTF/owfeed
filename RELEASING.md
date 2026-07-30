@@ -3,9 +3,10 @@
 The repository references its own release tag in places that have to be moved before
 the tag exists, so the tag contains its own correct self-reference.
 
-1. `.github/workflows/feed.yml` — every `uses: owfeed/owfeed/setup@vX.Y.Z` line,
-   one per job, and the tags in the usage comments at the top. Do not count them
-   from memory; `grep -c 'setup@v' .github/workflows/feed.yml` is the check.
+1. `.github/workflows/feed.yml` AND `.github/workflows/package.yml` — every
+   `uses: owfeed/owfeed/setup@vX.Y.Z` line, one per job, and the tags in the usage
+   comments at the top, which name the workflow's own ref as well. Do not count
+   them from memory; `grep -rc 'v<previous>' .github/workflows/` is the check.
 2. `README.md` and `README_ru.md` — the download example and the action snippets.
 3. `site/**/*.html` — the download example on the landing page and the
    `setup@vX.Y.Z` lines in the cookbook, in both languages. `grep -rn 'setup@v\|
