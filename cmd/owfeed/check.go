@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"os"
+	"path/filepath"
 
 	"owfeed.org/owfeed/internal/keys"
 	"owfeed.org/owfeed/internal/usign"
@@ -46,14 +47,28 @@ func (a *app) check(ctx context.Context, args []string) error {
 	}
 	defer cleanup()
 
+	// IT LEAVES NOTHING BEHIND, which is as much a part of what `check` is as the
+	// keys. Everything it produces is signed by a key that will not exist in a
+	// moment, and `index` adds a keyring package carrying that key's public half —
+	// so a run that wrote into `dist` would leave a directory that looks like output
+	// and must never be published. A later `owfeed release` in the same job would
+	// happily put both in a release.
+	work, err := os.MkdirTemp(tempParent(), "owfeed-check-")
+	if err != nil {
+		return wrap(exitInternal, err)
+	}
+	defer os.RemoveAll(work)
+	dist := filepath.Join(work, "dist")
+	out := filepath.Join(work, "out")
+
 	for _, stage := range []struct {
 		name string
 		run  func() error
 	}{
-		{"build", func() error { return a.build(ctx, nil) }},
-		{"sign", func() error { return a.sign(ctx, nil) }},
-		{"index", func() error { return a.index(ctx, nil) }},
-		{"doctor", func() error { return a.doctor(ctx, doctorArgs(*requireOrigin, *failOn)) }},
+		{"build", func() error { return a.build(ctx, []string{"-o", dist}) }},
+		{"sign", func() error { return a.sign(ctx, []string{dist}) }},
+		{"index", func() error { return a.index(ctx, []string{"-o", out, dist}) }},
+		{"doctor", func() error { return a.doctor(ctx, append(doctorArgs(*requireOrigin, *failOn), out)) }},
 	} {
 		a.logf("== %s", stage.name)
 		if err := stage.run(); err != nil {
@@ -61,6 +76,15 @@ func (a *app) check(ctx context.Context, args []string) error {
 		}
 	}
 	return nil
+}
+
+// tempParent is RUNNER_TEMP on a GitHub runner, which is on the same volume as the
+// workspace and is cleaned up with the job.
+func tempParent() string {
+	if p := os.Getenv("RUNNER_TEMP"); p != "" {
+		return p
+	}
+	return os.TempDir()
 }
 
 func doctorArgs(requireOrigin bool, failOn string) []string {
