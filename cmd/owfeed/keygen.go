@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"owfeed.org/owfeed/internal/config"
 	"owfeed.org/owfeed/internal/keys"
@@ -106,13 +107,19 @@ func gitRoot(dir string) (string, bool) {
 	}
 }
 
+// rel shortens a path for a log line, and only when that actually shortens it.
+//
+// A relative path to somewhere outside the working directory is a row of `../` that is
+// longer than the absolute path and harder to read — `owfeed check` writes into a
+// temporary directory and produced eight of them. Below the working directory, which is
+// the usual case, the relative form is the readable one.
 func rel(path string) string {
 	wd, err := os.Getwd()
 	if err != nil {
 		return path
 	}
 	r, err := filepath.Rel(wd, path)
-	if err != nil {
+	if err != nil || strings.HasPrefix(r, "..") {
 		return path
 	}
 	return r
