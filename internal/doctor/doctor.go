@@ -289,14 +289,28 @@ func checkABI(r *Report, in Input) {
 //
 // A README that says nothing about the feed is not a finding. One that documents
 // it and disagrees with what owfeed would publish is.
+//
+// WHAT COUNTS AS DOCUMENTING IT is the whole difficulty, and mentioning the feed's
+// URL does not. This check used to take that as its gate, and it was wrong for every
+// repository that publishes release assets rather than a feed of its own: those set
+// `feed.url` to their project page — the place a person goes to find out what the
+// thing is — and their README then contains it in every badge, every link and every
+// clone command. The check fired on all of them, and its advice was to paste in a
+// snippet naming URLs that repository does not serve, so following it would have
+// documented a 404 in order to silence a finding about 404s.
+//
+// The gate is the line that configures the repository instead. It names the feed and
+// appears for no other reason, so it is evidence rather than coincidence.
 func checkDocDrift(r *Report, in Input) {
 	readme := filepath.Join(in.Root, "README.md")
 	body, err := os.ReadFile(readme)
 	if err != nil {
 		return
 	}
-	base := strings.TrimSuffix(in.Config.Feed.URL, "/")
-	if base == "" || !strings.Contains(string(body), base) {
+	if strings.TrimSuffix(in.Config.Feed.URL, "/") == "" {
+		return
+	}
+	if !strings.Contains(string(body), snippet.Anchor(snippet.Input{Config: in.Config})) {
 		return
 	}
 

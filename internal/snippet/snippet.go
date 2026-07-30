@@ -285,6 +285,29 @@ func Warnings(in Input) []Warning {
 	}
 }
 
+// Anchor is the line that identifies a piece of text as instructions for
+// subscribing to THIS feed, rather than as any other mention of it.
+//
+// It is the command that configures the repository — the apk repositories.d file,
+// or the opkg customfeeds.conf entry — and it carries the feed's own name, so it
+// does not appear in a document for any other reason. That is what makes it usable
+// as a gate: `doctor` has to decide whether a README documents this feed at all
+// before it is entitled to compare the two, and the feed's URL cannot answer that.
+// A repository whose feed URL is its own project page — the shape that publishes
+// release assets and leaves the indexing to somebody else's feed — has that URL in
+// every badge, every link and every clone command.
+//
+// The base URL is deliberately not part of it. A README carrying the right
+// repositories.d line under the wrong base URL is precisely the drift 701 exists to
+// find, so a gate that included the base would skip the case it was written for.
+func Anchor(in Input) string {
+	f := in.Config.Feed
+	if release, _ := resolve(in); in.Format(release) == config.FormatIPK {
+		return fmt.Sprintf("src/gz %s ", f.Name)
+	}
+	return "/etc/apk/repositories.d/" + f.Name + ".list"
+}
+
 // Format reports the package format a release line uses.
 func (in Input) Format(line string) string {
 	for _, r := range in.Config.Releases {

@@ -195,6 +195,38 @@ func TestDocDrift(t *testing.T) {
 	}
 }
 
+// A repository that publishes RELEASE ASSETS and no feed of its own sets feed.url to
+// its project page, and its README then contains that URL in every badge, link and
+// clone command while documenting no repository at all. Mentioning the URL was the
+// old gate, so every one of those repositories was told to replace its install
+// instructions with a snippet naming URLs it does not serve.
+func TestDocDriftIgnoresARepositoryThatPublishesNoFeed(t *testing.T) {
+	in := input(t, config.Package{Name: "luci-app-demo"})
+	in.Config.Feed.URL = "https://github.com/someone/luci-app-demo"
+	in.Config.Layout.Path = config.DefaultLayoutPath
+	in.Config.Releases = []config.Release{{Line: "25.12", Default: true}}
+
+	// The URL appears three times, and not once as a repository to subscribe to.
+	body := "# Demo\n\n" +
+		"[![build](https://github.com/someone/luci-app-demo/actions/workflows/ci.yml/badge.svg)]" +
+		"(https://github.com/someone/luci-app-demo/actions)\n\n" +
+		"Source: https://github.com/someone/luci-app-demo\n\n" +
+		"```sh\n" +
+		"git clone https://github.com/someone/luci-app-demo\n" +
+		"apk add --allow-untrusted ./luci-app-demo-1.0.0-r1.apk\n" +
+		"```\n"
+	readme := filepath.Join(in.Root, "README.md")
+	if err := os.WriteFile(readme, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	r := &Report{}
+	checkDocDrift(r, in)
+	if len(r.Findings) != 0 {
+		t.Errorf("a README that documents no repository was reported: %v\n%s", ids(r), r.Findings[0])
+	}
+}
+
 // A package that is simply absent is invisible to every other check: they all read
 // the tree and ask whether what is there is right. This is what let a tree carrying
 // one of three packages on its 24.10 line pass 610 checks and report itself ready to
