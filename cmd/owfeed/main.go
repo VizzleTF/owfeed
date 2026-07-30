@@ -137,6 +137,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = a.lock(ctx, cmdArgs)
 	case "releases":
 		err = a.releases(ctx, cmdArgs)
+	case "plan":
+		err = a.plan(ctx, cmdArgs)
 	case "build":
 		err = a.build(ctx, cmdArgs)
 	case "sign":
@@ -222,6 +224,7 @@ Commands:
   keygen      create the feed's signing key
   lock        derive the architecture matrix and write owfeed.lock
   releases    what the download server publishes per line, and which format it takes
+  plan        what a build would produce, offline and before it produces it
   build       build every configured package into a flat directory
   sign        sign the packages in a directory
   index       fan out the signed packages and build a signed index per architecture
