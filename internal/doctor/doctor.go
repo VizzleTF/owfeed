@@ -160,6 +160,8 @@ func Run(ctx context.Context, in Input) (*Report, error) {
 	checkKeyName(r, in)
 	checkDescriptions(r, in)
 	checkConffileCoverage(r, in)
+	checkPayloadJSON(r, in)
+	checkPayloadShell(r, in)
 	checkABI(r, in)
 	checkDocDrift(r, in)
 	checkOrigin(r, in)
